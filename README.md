@@ -223,7 +223,7 @@ To post to Instagram using the Instagram Graph API, you need the following crede
 ### **Step 3: Create an Instagram Business/Creator Account**
 1. Go to [Instagram](https://www.instagram.com/) and log in.  
 2. Click **Profile** → **Edit Profile**.  
-3. Under **"Professional Account"**, ensure your account is set to **Business or Creator**.  
+3. Under **"Professional Account"**, ensure your account is set to **Business or Creator**. **Note: Personal accounts are no longer supported via the Graph API as of late 2024.**
 4. **Link your Instagram account** to a **Facebook Page** (this is mandatory).  
    - Go to **Facebook Business Suite** → **Business Settings** → **Accounts → Instagram Accounts** → **Add Account**.  
 
@@ -244,7 +244,7 @@ To post to Instagram using the Instagram Graph API, you need the following crede
 ### **Step 5: Get Your Instagram User ID**
 1. Open a new browser tab and enter the following request in the [Graph API Explorer](https://developers.facebook.com/tools/explorer/):  
    ```
-   https://graph.facebook.com/v15.0/me?fields=id,username&access_token=YOUR_ACCESS_TOKEN
+   https://graph.facebook.com/v22.0/me?fields=id,username&access_token=YOUR_ACCESS_TOKEN
    ```
 2. Click **Submit**.  
 3. The response will contain your Instagram **User ID** (`INSTAGRAM_USER_ID`).  

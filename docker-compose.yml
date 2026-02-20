@@ -1,0 +1,13 @@
+services:
+  adminjack:
+    build: .
+    container_name: adminjack
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./event_details.json:/app/event_details.json
+      - ./uploads:/app/uploads
+      - ./.env:/app/.env
+      - ./token.json:/app/token.json
+      - ./client_secret.json:/app/client_secret.json
+    restart: unless-stopped

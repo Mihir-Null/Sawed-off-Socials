@@ -11,7 +11,7 @@ def instagram_post(details):
         instagram_user_id = os.environ.get("INSTAGRAM_USER_ID")
 
         # Step 1: Upload the image for feed post
-        image_upload_url = f"https://graph.facebook.com/v15.0/{instagram_user_id}/media"
+        image_upload_url = f"https://graph.facebook.com/v22.0/{instagram_user_id}/media"
         image_payload = {
             "image_url": f"{os.path.abspath(details['image'])}",
             "caption": details['event_name'] + "\n" + details['description'],
@@ -27,7 +27,7 @@ def instagram_post(details):
         creation_id = image_response_data["id"]
 
         # Step 2: Publish the uploaded image to Feed
-        publish_url = f"https://graph.facebook.com/v15.0/{instagram_user_id}/media_publish"
+        publish_url = f"https://graph.facebook.com/v22.0/{instagram_user_id}/media_publish"
         publish_payload = {
             "creation_id": creation_id,
             "access_token": instagram_access_token
