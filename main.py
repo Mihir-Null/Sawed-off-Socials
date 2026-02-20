@@ -121,7 +121,7 @@ def execute_action(action):
         messagebox.showerror("Error", f"An error occurred while executing '{action}': {str(e)}")
 
 root = tk.Tk()
-root.title("AdminJack")
+root.title("Sawed-off-Socials")
 
 # Main screen
 main_frame = tk.Frame(root)

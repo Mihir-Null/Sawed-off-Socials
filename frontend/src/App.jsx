@@ -108,8 +108,8 @@ function App() {
               <Settings className="w-8 h-8 text-white" />
             </div>
             <div>
-              <h1 className="text-3xl font-bold tracking-tight">AdminJack</h1>
-              <p className="text-slate-400 text-sm">Automation Suite for Student Organizations</p>
+              <h1 className="text-3xl font-bold tracking-tight">Sawed-off-Socials</h1>
+              <p className="text-slate-400 text-sm">Social Media Automation Suite</p>
             </div>
           </div>
           <button
@@ -125,8 +125,8 @@ function App() {
         {/* Status Bar */}
         {status.message && (
           <div className={`p-4 rounded-lg flex items-center space-x-3 ${status.type === 'success' ? 'bg-emerald-900/40 text-emerald-400 border border-emerald-500/30' :
-              status.type === 'error' ? 'bg-rose-900/40 text-rose-400 border border-rose-500/30' :
-                'bg-blue-900/40 text-blue-400 border border-blue-500/30'
+            status.type === 'error' ? 'bg-rose-900/40 text-rose-400 border border-rose-500/30' :
+              'bg-blue-900/40 text-blue-400 border border-blue-500/30'
             }`}>
             {status.type === 'success' ? <CheckCircle2 className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
             <p>{status.message}</p>

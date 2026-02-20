@@ -1,5 +1,5 @@
-# AdminJack
-One click social media administration for interest clubs. Currently automates discord event creation and announcement, emailing to lists, automatic custom emails, google calendar event creation, posting to Instagram and as a post and a story of the post. This project is feature-complete but ultimately still a work in progress.
+# Sawed-off-Socials
+Powerful social media automation for interest clubs and organizations. Sawed-off-Socials primarily automates posting to multiple social media accounts, including Discord, Instagram, and Google services. Currently automates discord event creation and announcement, emailing to lists, automatic custom emails, google calendar event creation, posting to Instagram as both a post and a story. This project is feature-complete but ultimately still a work in progress.
 
 # Usage
 The best way to use the bot is to clone the repository, create a new virtual environment for python using the requirements.txt and running main.py with python3. (To be fully implemented) However an .exe file has also been provided through pyinstaller, though this has not been as thoroughly tested.
@@ -25,7 +25,7 @@ Once cloned go down to setup to create and load all required authentication keys
 ### A Note on Custom Emails
 Custom emails are a list of prespecified emails to be sent for things like scheduling rooms, requesting to be put on listservs, newsletters, etc. All custom emails must be specified as a set of key value pairs in `custom_emails.json`. The keys being are the "entry name" that must be referred to in the adminjack input fields to specify which custom emails should be sent, and the values are 3-tuples that correspond to the email address, subject line and body respectively.
 
-AdminJack will automatically replace formatted fields with the relevant inputted entry from Event Details. For example if you have `{club_name}` somehwhere in one of your custom email jsons. Putting in your club name in the "Enter Event Details" screen will ensure that the `{club_name}` is replaced with the actual club name that you inputted. This follows the python convention where the field must be enclosed in curly braces. A full list of fields is detailed below:
+Sawed-off-Socials will automatically replace formatted fields with the relevant inputted entry from Event Details. For example if you have `{club_name}` somehwhere in one of your custom email jsons. Putting in your club name in the "Enter Event Details" screen will ensure that the `{club_name}` is replaced with the actual club name that you inputted. This follows the python convention where the field must be enclosed in curly braces. A full list of fields is detailed below:
 ```
 "event_name", "description", "image", "server_name", "channel_name", "meeting_link", "event_date", "event_time", "timezone", "calendar_name", "csv_file", "email_column", "event_duration", "club_name", "custom emails list","more_info_link"
 ```
@@ -67,8 +67,8 @@ AdminJack will automatically replace formatted fields with the relevant inputted
    - Specify the time of the event in `HH:MM` format (24-hour clock).  
 
 10. **Timezone**  
-   - Define the timezone of the event (e.g., `EST`, `UTC`).  
-   - This is also what is used to synchronize the event time in discord and on google calendar.
+    - Define the timezone of the event (e.g., `EST`, `UTC`).  
+    - This is also what is used to synchronize the event time in discord and on google calendar.
 
 11. **Calendar Name**  
     - Provide the name of the calendar where the event should be added.
@@ -110,7 +110,7 @@ All details that are inputted are read and saved into a dictionary called `detai
 
 # Setup and Authentication Keys
 ## Google
-The Google endpoints for AdminJack rely on a Google Cloud App. The safest way to route your information for this is to create your own Google Cloud App for your club's use.
+The Google endpoints for Sawed-off-Socials rely on a Google Cloud App. The safest way to route your information for this is to create your own Google Cloud App for your club's use.
 To obtain the `client_secret` for your Google Cloud app, follow these steps:
 
 ### **1. Create or Select a Google Cloud Project**
@@ -153,8 +153,8 @@ To obtain the `client_secret` for your Google Cloud app, follow these steps:
 - A dialog box will show the **Client ID** and **Client Secret**.
 - Click **Download JSON** to save your credentials (this includes `client_secret`).
 
-### **6. Store It in the AdminJack Folder**
-- Store your credentials in the same folder as the AdminJack python scripts. **Guard this secret file closely**
+### **6. Store It in the Sawed-off-Socials Folder**
+- Store your credentials in the same folder as the Sawed-off-Socials python scripts. **Guard this secret file closely**
 
 ## Discord
 ### **How to Create a Discord Bot and Store Its Credentials in a `.env` File**
