@@ -1,5 +1,5 @@
 # AdminJack
-One click administration for interest clubs. Currently automates discord event creation and announcement, emailing to lists, automatic custom emails, google calendar event creation, posting to Instagram and as a post and a story of the post. This project is feature-complete but ultimately still a work in progress.
+One click social media administration for interest clubs. Currently automates discord event creation and announcement, emailing to lists, automatic custom emails, google calendar event creation, posting to Instagram and as a post and a story of the post. This project is feature-complete but ultimately still a work in progress.
 
 # Usage
 The best way to use the bot is to clone the repository, create a new virtual environment for python using the requirements.txt and running main.py with python3. (To be fully implemented) However an .exe file has also been provided through pyinstaller, though this has not been as thoroughly tested.
