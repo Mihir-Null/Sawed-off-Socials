@@ -9,5 +9,7 @@ services:
       - ./uploads:/app/uploads
       - ./.env:/app/.env
       - ./token.json:/app/token.json
-      - ./client_secret.json:/app/client_secret.json
     restart: unless-stopped
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
