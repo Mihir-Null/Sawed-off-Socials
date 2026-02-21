@@ -179,6 +179,9 @@ async def google_auth_callback(code: str):
 # Serve Frontend static files
 if os.path.exists(STATIC_DIR):
     app.mount("/assets", StaticFiles(directory=os.path.join(STATIC_DIR, "assets")), name="assets")
+    # Also mount the uploads directory so images can be served if a tunnel is used
+    if os.path.exists(UPLOAD_DIR):
+        app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
     @app.get("/{full_path:path}")
     async def serve_frontend(full_path: str):

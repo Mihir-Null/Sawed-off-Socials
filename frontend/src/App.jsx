@@ -160,10 +160,10 @@ function App() {
         )}
 
         {/* Centered Branding Header */}
-        <header className="flex flex-col items-center text-center space-y-8 py-10 relative">
+        <header className="flex flex-col items-center text-center space-y-8 py-10 relative w-full">
           <button
             onClick={() => setDebugMode(!debugMode)}
-            className={`absolute top-0 right-0 px-4 py-2 rounded-lg border-2 font-bold text-xs tracking-widest uppercase transition-all ${debugMode ? 'bg-orange border-orange text-bg0' : 'bg-bg0 border-bg2 text-fg1 opacity-50 hover:opacity-100'
+            className={`absolute top-0 left-0 px-4 py-2 rounded-lg border-2 font-bold text-xs tracking-widest uppercase transition-all ${debugMode ? 'bg-orange border-orange text-bg0' : 'bg-bg0 border-bg2 text-fg1 opacity-50 hover:opacity-100'
               }`}
           >
             {debugMode ? 'Close Logs' : 'Debug Console'}
@@ -344,12 +344,13 @@ function App() {
               <span>FIRE ALL ENGINES</span>
             </button>
           </section>
+        </main>
 
-          <footer className="py-10 border-t-2 border-bg2 text-center">
-            <p className="text-fg1 font-bold text-[10px] uppercase tracking-[0.2em]">
-              Sawed-off-Socials Automated Terminal • 2026
-            </p>
-          </footer>
+        <footer className="py-10 border-t-2 border-bg2 text-center">
+          <p className="text-fg1 font-bold text-[10px] uppercase tracking-[0.2em]">
+            Sawed-off-Socials Automated Terminal • 2026
+          </p>
+        </footer>
       </div>
 
       {/* Live Debug Console Side Panel */}
@@ -376,9 +377,9 @@ function App() {
                 const isSuccess = log.includes('SUCCESS') || log.includes('complete') || log.includes('OK!');
                 return (
                   <div key={i} className={`flex gap-3 px-2 py-1 rounded transition-colors ${isError ? 'bg-red/10 text-red border-l-2 border-red' :
-                      isWarning ? 'bg-yellow/10 text-yellow border-l-2 border-yellow' :
-                        isSuccess ? 'bg-green/10 text-green border-l-2 border-green' :
-                          'text-fg1 border-l-2 border-bg2 hover:bg-bg1/50'
+                    isWarning ? 'bg-yellow/10 text-yellow border-l-2 border-yellow' :
+                      isSuccess ? 'bg-green/10 text-green border-l-2 border-green' :
+                        'text-fg1 border-l-2 border-bg2 hover:bg-bg1/50'
                     }`}>
                     <span className="flex-1 break-words">{log}</span>
                   </div>

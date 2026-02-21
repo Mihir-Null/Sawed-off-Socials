@@ -234,27 +234,51 @@ To post to Instagram using the Instagram Graph API, you need the following crede
 2. Select your App from the dropdown.  
 3. Under **Permissions**, add the following:  
    ```
-   instagram_basic, instagram_content_publish
+   instagram_basic, instagram_content_publish, pages_show_list, pages_read_engagement
    ```
-4. Click **"Generate Access Token"** and approve the request.  
-5. **Copy the Access Token** (`INSTAGRAM_ACCESS_TOKEN`).  
+4. Click **"Generate Access Token"**. 
+5. **CRITICAL**: A popup will appear. You MUST select the Facebook Page and the Instagram Business Account you want to use. If you don't select them, the token will not have permission to post.
+6. **Copy the Access Token** and paste it into `INSTAGRAM_ACCESS_TOKEN` in your `.env` file.
 
 ---
 
 ### **Step 5: Get Your Instagram User ID**
-1. Open a new browser tab and enter the following request in the [Graph API Explorer](https://developers.facebook.com/tools/explorer/):  
+1. Instead of manual lookups, we've provided a script to find the correct ID for you.
+2. Ensure your `INSTAGRAM_ACCESS_TOKEN` is saved in your `.env` file.
+3. Run the following command in your terminal:
+   ```bash
+   python3 find_insta_id.py
    ```
-   https://graph.facebook.com/v22.0/me?fields=id,username&access_token=YOUR_ACCESS_TOKEN
-   ```
-2. Click **Submit**.  
-3. The response will contain your Instagram **User ID** (`INSTAGRAM_USER_ID`).  
+4. The script will output the correct **Instagram Business Account ID**.
+5. Copy this ID and paste it into `INSTAGRAM_USER_ID` in your `.env` file.
 
 ---
 
 ### **Step 6: Store Credentials in the `.env` File**
-Create or edit the `.env` file and store the credentials securely:  
+Your `.env` should look like this (but with your actual keys):  
 
 ```
 INSTAGRAM_ACCESS_TOKEN=your-access-token-here
 INSTAGRAM_USER_ID=your-user-id-here
+```
+
+## Cloudinary (Required for Instagram)
+Instagram requires a publicly accessible URL for all media. Cloudinary is used to host your local images and videos so Instagram can fetch them.
+
+### **Step 1: Create a Cloudinary Account**
+1. Sign up for a free account at [Cloudinary](https://cloudinary.com/users/register/free).
+2. Once logged in, go to your **Dashboard**.
+
+### **Step 2: Get Your Credentials**
+1. On the Dashboard, you will see your **Product Environment Details**:
+   - **Cloud Name**
+   - **API Key**
+   - **API Secret** (Click the eye icon to reveal it)
+
+### **Step 3: Store Credentials in the `.env` File**
+Add these to your `.env` file under the Cloudinary section:
+```bash
+CLOUDINARY_CLOUD_NAME=your-cloud-name
+CLOUDINARY_API_KEY=your-api-key
+CLOUDINARY_API_SECRET=your-api-secret
 ```

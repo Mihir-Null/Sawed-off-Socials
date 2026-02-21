@@ -104,7 +104,7 @@ def execute_action(action):
         elif action == "instagram":
             import Jack_Insta
             from Jack_Insta import instagram_post
-            instagram_post()
+            instagram_post(details)
         elif action == "custom":
             import Jack_Google
             from Jack_Google import send_custom_emails
