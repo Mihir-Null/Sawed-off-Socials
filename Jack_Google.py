@@ -19,9 +19,26 @@ import base64
 
 # File to store event details
 EVENT_DETAILS_FILE = "event_details.json"
-SCOPES = ['https://www.googleapis.com/auth/calendar', 'https://www.googleapis.com/auth/gmail.send']
+SCOPES = [
+    'https://www.googleapis.com/auth/calendar', 
+    'https://www.googleapis.com/auth/gmail.send',
+    'https://www.googleapis.com/auth/userinfo.email',
+    'openid'
+]
 
 load_dotenv()
+
+AUTH_INFO_FILE = "auth_info.json"
+
+def get_auth_status():
+    """Return stored authentication info (email)."""
+    if os.path.exists(AUTH_INFO_FILE):
+        try:
+            with open(AUTH_INFO_FILE, "r") as f:
+                return json.load(f)
+        except:
+            pass
+    return {"email": None}
 
 def save_event_details_to_file(details):
     """Save event details to a JSON file."""
@@ -79,6 +96,17 @@ def handle_google_callback(code):
     token_file = "token.json"
     with open(token_file, 'w') as token:
         token.write(creds.to_json())
+    
+    # Fetch user email
+    try:
+        service = build('oauth2', 'v2', credentials=creds)
+        user_info = service.userinfo().get().execute()
+        email = user_info.get('email')
+        with open(AUTH_INFO_FILE, 'w') as f:
+            json.dump({"email": email}, f)
+    except Exception as e:
+        print(f"Failed to fetch user email: {e}")
+
     return creds
 
 def authenticate_user():
@@ -99,14 +127,17 @@ def authenticate_user():
 
 def add_to_google_calendar(details):
     try:
+        print(f"[Google] Initializing Calendar sync...")
         start_datetime = datetime.strptime(f"{details['event_date']}T{details['event_time']}:00", "%Y-%m-%dT%H:%M:%S")
         formatted_start_time = start_datetime.isoformat()
         end_datetime = start_datetime + timedelta(hours=int(details['event_duration']))
         formatted_end_time = end_datetime.isoformat()
 
         creds = authenticate_user()
+        print(f"[Google] Authentication successful.")
         service = build('calendar', 'v3', credentials=creds)
 
+        print(f"[Google] Fetching calendar list...")
         calendar_id = None
         calendar_list = service.calendarList().list().execute()
 
@@ -116,8 +147,10 @@ def add_to_google_calendar(details):
                 break
         
         if calendar_id is None:
-            print(f"Calendar '{details['calendar_name']}' not found. Proceeding with primary calendar.")
+            print(f"[Google] WARNING: Calendar '{details['calendar_name']}' not found. Using 'primary'.")
             calendar_id = 'primary'
+        else:
+            print(f"[Google] Targeted calendar: {details['calendar_name']}")
 
         event = {
             'summary': details['event_name'],
@@ -128,13 +161,14 @@ def add_to_google_calendar(details):
             'reminders': {'useDefault': True},
         }
         
+        print(f"[Google] Creating event: '{details['event_name']}'")
         event = service.events().insert(calendarId=calendar_id, body=event).execute()
-        print(f'Event created: {event.get("htmlLink")}')
+        print(f"[Google] Calendar event created: {event.get('htmlLink')}")
         return event.get("htmlLink")
     
-    except HttpError as error:
-        print(f'An error occurred: {error}')
-        return None
+    except Exception as e:
+        print(f"[Google] Calendar FAILED: {e}")
+        raise e
 
 def send_email_with_gmail_api(creds, recipient_email, subject, body):
     try:
@@ -145,75 +179,74 @@ def send_email_with_gmail_api(creds, recipient_email, subject, body):
         message['subject'] = subject
         encoded_message = {'raw': base64.urlsafe_b64encode(message.as_bytes()).decode()}
         send_message = service.users().messages().send(userId="me", body=encoded_message).execute()
-        print(f"Email sent to {recipient_email}: {send_message['id']}")
-    except HttpError as error:
-        print(f"An error occurred: {error}")
+        print(f"[Gmail] Successfully sent to: {recipient_email}")
+        return send_message['id']
+    except Exception as e:
+        print(f"[Gmail] FAILED to send to {recipient_email}: {e}")
+        raise e
 
 def send_email_to_list(details):
     email_list = []
     try:
-        with open(details['csv_file'], mode='r') as file:
+        csv_path = details.get('csv_file', '')
+        print(f"[Gmail] Parsing target list: {os.path.basename(csv_path)}")
+        
+        if not os.path.exists(csv_path):
+            raise FileNotFoundError(f"CSV file not found: {csv_path}")
+
+        with open(csv_path, mode='r') as file:
             reader = csv.DictReader(file)
-            if details['email_column'] not in reader.fieldnames:
-                print(f"Column '{details['email_column']}' not found in CSV file fieldnames {reader.fieldnames}")
-                return
+            col_name = details.get('email_column', 'Email')
+            if col_name not in reader.fieldnames:
+                raise ValueError(f"Column '{col_name}' missing from CSV. Found: {reader.fieldnames}")
+            
             for row in reader:
-                email = row[details['email_column']]
-                if email and (email.__contains__(".com") or email.__contains__(".edu") or email.__contains__(".in") or details['email_checking_bool']):
+                email = row[col_name]
+                if email and ("@" in email): # Simplified validation
                     email_list.append(email)
-        print(f"Emails extracted: {email_list}")
+        
+        print(f"[Gmail] Extracted {len(email_list)} target(s).")
         creds = authenticate_user()
+        
         subject = f"{details['club_name']} Event: {details['event_name']}"
         body_template = (
             f"{details['event_name']}\n\n"
-            f"Event: {details['description']}\n\n"
+            f"Event Info: {details['description']}\n\n"
             f"Date: {details['event_date']}\n"
             f"Time: {details['event_time']}\n"
-            f"Location: {details['meeting_link']}\n\n"
-            f"For more information, visit: {details['more_info_link']}\n\n"
+            f"Location: {details['meeting_link']}\n"
             "Best regards,\n"
-            f"The {details['club_name']} team\n\n"
-            f"You are receiving this email because you are on the {details['club_name']} mailing list "
+            f"The {details['club_name']} Team"
         )
+        
         for recipient_email in email_list:
-            body = body_template
-            send_email_with_gmail_api(creds, recipient_email, subject, body)
+            send_email_with_gmail_api(creds, recipient_email, subject, body_template)
+            
+        print("[Gmail] Broadcast list complete!")
     except Exception as e:
-        print(f"Failed to process the CSV file: {e}")
-
-
+        print(f"[Gmail] ERROR: {e}")
+        raise e
 
 def send_custom_emails(details, email_names):
+    print(f"[Gmail] Processing custom email targets...")
     creds = authenticate_user()
     CUSTOM_EMAILS_FILE = "custom_emails.json"
-    if os.path.exists(CUSTOM_EMAILS_FILE) and os.path.getsize(CUSTOM_EMAILS_FILE) > 0:
-        with open(CUSTOM_EMAILS_FILE, "r") as file:
-            emails_dict = json.load(file)
-    else:
-        print("No custom emails found.")
-        emails_dict = {}
-    for key, value in emails_dict.items():
-        value["subject"] = value["subject"].format(**details)
-        value["body"] = value["body"].format(**details)
-####################################[CUSTOM EMAILS HERE]######################################################
-    # emails_dict = {
-    #     # don't forget to separate the emails with a comma
-    #     "example1" :
-    #     (
-    #         f"mihirtalati3@gmail.com",
-    #         f"{details['club_name']} Event: {details['event_name']}",
-    #         f"blah blah blah"
-    #     )
-    #     ,
-    #     "example2" :
-    #     (
-    #         f"walnutmocha@gmail.com",
-    #         f"custom subject",
-    #         f"custom body"
-    #     )
+    
+    if not os.path.exists(CUSTOM_EMAILS_FILE):
+        print("[Gmail] WARNING: custom_emails.json not found.")
+        return
 
-    # }
-##############################################################################################################
-    for email in email_names.split(","):
-        recipient_email, subject, body = emails_dict[email]
-        send_email_with_gmail_api(creds, recipient_email, subject, body)
+    with open(CUSTOM_EMAILS_FILE, "r") as file:
+        emails_dict = json.load(file)
+    
+    targets = [e.strip() for e in email_names.split(",") if e.strip()]
+    for name in targets:
+        if name in emails_dict:
+            target = emails_dict[name]
+            subject = target["subject"].format(**details)
+            body = target["body"].format(**details)
+            send_email_with_gmail_api(creds, target["email"], subject, body)
+        else:
+            print(f"[Gmail] WARNING: Target '{name}' not found in custom_emails.json")
+    
+    print("[Gmail] Custom broadcast complete!")

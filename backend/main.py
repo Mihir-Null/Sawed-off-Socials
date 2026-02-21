@@ -17,6 +17,59 @@ import Jack_Discord
 import Jack_Google
 import Jack_Insta
 
+import sys
+import io
+import threading
+from collections import deque
+
+# --- Logging Infrastructure ---
+class LogBuffer(io.StringIO):
+    def __init__(self, maxlen=500):
+        super().__init__()
+        self.buffer = deque(maxlen=maxlen)
+        self.lock = threading.Lock()
+
+    def write(self, s):
+        if s:
+            with self.lock:
+                # Add timestamp to each log line for the console
+                timestamp = datetime.now().strftime("%H:%M:%S")
+                # Strip trailing newlines to avoid empty lines in the UI
+                clean_s = s.rstrip('\n')
+                if clean_s:
+                    for line in clean_s.split('\n'):
+                        self.buffer.append(f"[{timestamp}] {line}")
+        return super().write(s)
+
+    def get_logs(self):
+        with self.lock:
+            return list(self.buffer)
+
+log_buffer = LogBuffer()
+# Intercept stdout and stderr
+sys.stdout = log_buffer
+sys.stderr = log_buffer
+
+def normalize_timezone(tz_name):
+    """Maps common timezone abbreviations to IANA names."""
+    if not tz_name:
+        return "UTC"
+    mapping = {
+        "EST": "America/New_York",
+        "EDT": "America/New_York",
+        "CST": "America/Chicago",
+        "CDT": "America/Chicago",
+        "MST": "America/Denver",
+        "MDT": "America/Denver",
+        "PST": "America/Los_Angeles",
+        "PDT": "America/Los_Angeles",
+    }
+    normalized = mapping.get(str(tz_name).upper(), tz_name)
+    if normalized != tz_name:
+        print(f"[System] Normalizing timezone '{tz_name}' -> '{normalized}'")
+    return normalized
+
+# --- App Initialization ---
 app = FastAPI()
 
 # Enable CORS for frontend development
@@ -40,7 +93,9 @@ if not os.path.exists(UPLOAD_DIR):
 def load_details():
     if os.path.exists(EVENT_DETAILS_FILE) and os.path.getsize(EVENT_DETAILS_FILE) > 0:
         with open(EVENT_DETAILS_FILE, "r") as file:
-            return json.load(file)
+            details = json.load(file)
+            details['timezone'] = normalize_timezone(details.get('timezone', 'UTC'))
+            return details
     return {}
 
 def save_details(details):
@@ -68,20 +123,17 @@ async def execute_action(action: str):
     details = load_details()
     try:
         if action == "discord":
-            Jack_Discord.call_post_event(details)
+            await Jack_Discord.run_discord_task(details)
         elif action == "email":
             Jack_Google.send_email_to_list(details)
         elif action == "calendar":
-             # Need to handle potential redirect URI issues in hosted environment later
             Jack_Google.add_to_google_calendar(details)
         elif action == "instagram":
-            # Modified Jack_Insta.instagram_post to accept details
             Jack_Insta.instagram_post(details)
         elif action == "custom":
             Jack_Google.send_custom_emails(details, details.get("custom emails list", ""))
         elif action == "all":
-            # Sequential execution
-            Jack_Discord.call_post_event(details)
+            await Jack_Discord.run_discord_task(details)
             Jack_Google.send_email_to_list(details)
             Jack_Google.add_to_google_calendar(details)
             Jack_Insta.instagram_post(details)
@@ -91,7 +143,19 @@ async def execute_action(action: str):
             
         return {"status": "success", "message": f"Action {action} executed"}
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/auth/status")
+async def google_auth_status():
+    """Returns the current authentication status (logged in user email)."""
+    return Jack_Google.get_auth_status()
+
+@app.get("/api/logs")
+async def get_app_logs():
+    """Returns the captured stdout/stderr logs."""
+    return {"logs": log_buffer.get_logs()}
 
 @app.get("/api/auth/google")
 async def google_auth_init():
@@ -107,7 +171,8 @@ async def google_auth_callback(code: str):
     """Handles the Google OAuth callback and saves the token."""
     try:
         Jack_Google.handle_google_callback(code)
-        return {"status": "success", "message": "Authentication successful! You can close this tab."}
+        from fastapi.responses import RedirectResponse
+        return RedirectResponse(url="/")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
