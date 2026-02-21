@@ -11,7 +11,11 @@ import {
   Upload,
   CheckCircle2,
   AlertCircle,
-  Loader2
+  Loader2,
+  ChevronRight,
+  Monitor,
+  Layout,
+  Clock
 } from 'lucide-react';
 
 const API_BASE_URL = window.location.origin + '/api';
@@ -54,9 +58,9 @@ function App() {
     setLoading(true);
     try {
       await axios.post(`${API_BASE_URL}/details`, details);
-      setStatus({ type: 'success', message: 'Details saved successfully!' });
+      setStatus({ type: 'success', message: 'Configuration saved successfully!' });
     } catch (error) {
-      setStatus({ type: 'error', message: 'Failed to save details.' });
+      setStatus({ type: 'error', message: 'Failed to save configuration.' });
     }
     setLoading(false);
     setTimeout(() => setStatus({ type: '', message: '' }), 3000);
@@ -64,12 +68,12 @@ function App() {
 
   const handleAction = async (action) => {
     setLoading(true);
-    setStatus({ type: 'info', message: `Executing ${action}...` });
+    setStatus({ type: 'info', message: `Executing ${action} automation...` });
     try {
       await axios.post(`${API_BASE_URL}/actions/${action}`);
-      setStatus({ type: 'success', message: `${action.charAt(0).toUpperCase() + action.slice(1)} completed!` });
+      setStatus({ type: 'success', message: `${action.toUpperCase()} task completed!` });
     } catch (error) {
-      setStatus({ type: 'error', message: `Error executing ${action}: ${error.response?.data?.detail || error.message}` });
+      setStatus({ type: 'error', message: `Execution failed: ${error.response?.data?.detail || error.message}` });
     }
     setLoading(false);
   };
@@ -85,208 +89,216 @@ function App() {
       setLoading(true);
       const response = await axios.post(`${API_BASE_URL}/upload`, formData);
       setDetails(prev => ({ ...prev, [field]: response.data.file_path }));
-      setStatus({ type: 'success', message: 'File uploaded!' });
+      setStatus({ type: 'success', message: 'Asset uploaded successfully' });
     } catch (error) {
-      setStatus({ type: 'error', message: 'File upload failed.' });
+      setStatus({ type: 'error', message: 'Asset upload failed' });
     }
     setLoading(false);
   };
 
-  const fields = [
-    { name: 'event_name', label: 'Event Name', type: 'text' },
-    { name: 'description', label: 'Description', type: 'textarea' },
-    { name: 'image', label: 'Event Image', type: 'file' },
-    { name: 'csv_file', label: 'Roster CSV', type: 'file' },
-    { name: 'meeting_link', label: 'Meeting Link', type: 'text' },
-    { name: 'event_date', label: 'Event Date', type: 'date' },
-    { name: 'event_time', label: 'Event Time', type: 'time' },
-    { name: 'timezone', label: 'Timezone', type: 'text', placeholder: 'e.g. America/New_York' },
-    { name: 'event_duration', label: 'Duration (hours)', type: 'number' },
-    { name: 'server_name', label: 'Discord Server', type: 'text' },
-    { name: 'channel_name', label: 'Discord Channel', type: 'text' },
-    { name: 'calendar_name', label: 'Google Calendar Name', type: 'text' },
-    { name: 'club_name', label: 'Club Name', type: 'text' },
-    { name: 'more_info_link', label: 'More Info Link', type: 'text' },
+  const fieldGroups = [
+    {
+      title: 'General Information',
+      icon: <Layout className="w-5 h-5 text-blue-400" />,
+      fields: [
+        { name: 'event_name', label: 'Event Name', type: 'text' },
+        { name: 'description', label: 'Description', type: 'textarea' },
+        { name: 'club_name', label: 'Organization Name', type: 'text' },
+        { name: 'more_info_link', label: 'More Information Link', type: 'text' },
+      ]
+    },
+    {
+      title: 'Date & Time',
+      icon: <Clock className="w-5 h-5 text-purple-400" />,
+      fields: [
+        { name: 'event_date', label: 'Date', type: 'date' },
+        { name: 'event_time', label: 'Time', type: 'time' },
+        { name: 'timezone', label: 'Timezone', type: 'text', placeholder: 'America/New_York' },
+        { name: 'event_duration', label: 'Duration (hours)', type: 'number' },
+      ]
+    },
+    {
+      title: 'Platform Config',
+      icon: <Monitor className="w-5 h-5 text-emerald-400" />,
+      fields: [
+        { name: 'server_name', label: 'Discord Server', type: 'text' },
+        { name: 'channel_name', label: 'Discord Channel', type: 'text' },
+        { name: 'meeting_link', label: 'Location/Link', type: 'text' },
+        { name: 'calendar_name', label: 'Calendar Name', type: 'text' },
+      ]
+    },
+    {
+      title: 'Assets & Data',
+      icon: <Upload className="w-5 h-5 text-orange-400" />,
+      fields: [
+        { name: 'image', label: 'Campaign Image', type: 'file' },
+        { name: 'csv_file', label: 'Recipient List (CSV)', type: 'file' },
+        { name: 'email_column', label: 'Email Column Name', type: 'text' },
+      ]
+    }
   ];
 
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100 p-8 font-sans">
-      <div className="max-w-6xl mx-auto space-y-8">
-        {/* Header */}
-        <header className="flex justify-between items-center glass p-6 mb-8">
-          <div className="flex items-center space-x-3">
-            <div className="p-2 bg-blue-600 rounded-lg">
-              <Settings className="w-8 h-8 text-white" />
-            </div>
-            <div>
-              <h1 className="text-3xl font-bold tracking-tight">Sawed-off-Socials</h1>
-              <p className="text-slate-400 text-sm">Social Media Automation Suite</p>
-            </div>
+    <div className="min-h-screen p-6 lg:p-12 max-w-7xl mx-auto">
+      {/* Header Area */}
+      <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-12 animate-in">
+        <div className="flex items-center gap-5">
+          <div className="p-4 bg-blue-600 rounded-3xl shadow-lg shadow-blue-500/20">
+            <Settings className="w-8 h-8 text-white" />
           </div>
-          <button
-            onClick={handleSave}
-            disabled={loading}
-            className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-500 transition-colors px-6 py-2 rounded-full font-semibold disabled:opacity-50"
-          >
-            {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
-            <span>Save Details</span>
-          </button>
+          <div>
+            <h1 className="text-4xl font-bold tracking-tight">Sawed-off-Socials</h1>
+            <p className="text-slate-400 font-medium">Next-gen Social Automation</p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3">
           <button
             onClick={handleGoogleLogin}
             disabled={loading}
-            className="flex items-center space-x-2 bg-white/10 hover:bg-white/20 transition-colors px-6 py-2 rounded-full font-semibold disabled:opacity-50 border border-white/20"
+            className="btn-outline flex items-center gap-2"
           >
-            <Calendar className="w-5 h-5 text-blue-400" />
-            <span>Login with Google</span>
+            <Calendar className="w-5 h-5" />
+            <span>Link Google</span>
           </button>
-        </header>
+          <button
+            onClick={handleSave}
+            disabled={loading}
+            className="btn-primary"
+          >
+            {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
+            <span>Sync Config</span>
+          </button>
+        </div>
+      </header>
 
-        {/* Status Bar */}
-        {status.message && (
-          <div className={`p-4 rounded-lg flex items-center space-x-3 ${status.type === 'success' ? 'bg-emerald-900/40 text-emerald-400 border border-emerald-500/30' :
-            status.type === 'error' ? 'bg-rose-900/40 text-rose-400 border border-rose-500/30' :
-              'bg-blue-900/40 text-blue-400 border border-blue-500/30'
-            }`}>
-            {status.type === 'success' ? <CheckCircle2 className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
-            <p>{status.message}</p>
-          </div>
-        )}
+      {/* Floating Status */}
+      {status.message && (
+        <div className={`fixed bottom-8 right-8 z-50 p-5 rounded-2xl flex items-center gap-4 animate-in glass-panel ${status.type === 'success' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' :
+            status.type === 'error' ? 'bg-rose-500/10 text-rose-400 border-rose-500/20' :
+              'bg-blue-500/10 text-blue-400 border-blue-500/20'
+          }`}>
+          {status.type === 'success' ? <CheckCircle2 className="w-6 h-6" /> : <AlertCircle className="w-6 h-6" />}
+          <p className="font-semibold text-lg">{status.message}</p>
+        </div>
+      )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Form Section */}
-          <div className="lg:col-span-2 glass p-8 space-y-6">
-            <h2 className="text-xl font-semibold mb-6 flex items-center gap-2">
-              <Settings className="w-5 h-5 text-blue-400" />
-              Event Configuration
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {fields.map(field => (
-                <div key={field.name} className={field.type === 'textarea' ? 'md:col-span-2' : ''}>
-                  <label className="block text-sm font-medium text-slate-400 mb-1">
-                    {field.label}
-                  </label>
-                  {field.type === 'textarea' ? (
-                    <textarea
-                      name={field.name}
-                      value={details[field.name] || ''}
-                      onChange={handleChange}
-                      rows={3}
-                      className="w-full bg-slate-800/50 border border-slate-700 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:outline-none transition-all"
-                    />
-                  ) : field.type === 'file' ? (
-                    <div className="flex items-center gap-4">
-                      <input
-                        type="file"
-                        id={`file-${field.name}`}
-                        className="hidden"
-                        onChange={(e) => handleFileUpload(e, field.name)}
-                      />
-                      <label
-                        htmlFor={`file-${field.name}`}
-                        className="flex-1 bg-slate-800/50 border border-slate-700 rounded-lg px-4 py-2 cursor-pointer hover:bg-slate-800 transition-colors flex items-center justify-between"
-                      >
-                        <span className="truncate text-slate-400">
-                          {details[field.name] ? details[field.name].split('\\').pop().split('/').pop() : 'Choose file...'}
-                        </span>
-                        <Upload className="w-4 h-4" />
+      <main className="grid grid-cols-1 xl:grid-cols-4 gap-8">
+        {/* Left: Configuration Form */}
+        <div className="xl:col-span-3 space-y-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            {fieldGroups.map((group, idx) => (
+              <section key={group.title} className="glass-panel p-8 animate-in" style={{ animationDelay: `${idx * 0.1}s` }}>
+                <div className="flex items-center gap-3 mb-8">
+                  {group.icon}
+                  <h2 className="text-xl font-bold">{group.title}</h2>
+                </div>
+                <div className="space-y-6">
+                  {group.fields.map(field => (
+                    <div key={field.name} className={field.type === 'textarea' ? 'md:col-span-2' : ''}>
+                      <label className="block text-sm font-semibold text-slate-400 mb-2 uppercase tracking-wider">
+                        {field.label}
                       </label>
+                      {field.type === 'textarea' ? (
+                        <textarea
+                          name={field.name}
+                          value={details[field.name] || ''}
+                          onChange={handleChange}
+                          rows={3}
+                          className="w-full input-field resize-none"
+                        />
+                      ) : field.type === 'file' ? (
+                        <div className="relative group">
+                          <input
+                            type="file"
+                            id={`file-${field.name}`}
+                            className="hidden"
+                            onChange={(e) => handleFileUpload(e, field.name)}
+                          />
+                          <label
+                            htmlFor={`file-${field.name}`}
+                            className="w-full input-field flex items-center justify-between cursor-pointer group-hover:border-slate-500"
+                          >
+                            <span className="truncate text-slate-400 font-medium">
+                              {details[field.name] ? details[field.name].split('\\').pop().split('/').pop() : 'Select resource...'}
+                            </span>
+                            <Upload className="w-4 h-4 text-slate-500" />
+                          </label>
+                        </div>
+                      ) : (
+                        <input
+                          type={field.type}
+                          name={field.name}
+                          placeholder={field.placeholder}
+                          value={details[field.name] || ''}
+                          onChange={handleChange}
+                          className="w-full input-field"
+                        />
+                      )}
                     </div>
-                  ) : (
-                    <input
-                      type={field.type}
-                      name={field.name}
-                      placeholder={field.placeholder}
-                      value={details[field.name] || ''}
-                      onChange={handleChange}
-                      className="w-full bg-slate-800/50 border border-slate-700 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:outline-none transition-all"
-                    />
-                  )}
+                  ))}
                 </div>
-              ))}
-            </div>
+              </section>
+            ))}
           </div>
+        </div>
 
-          {/* Action Panel */}
-          <div className="space-y-6">
-            <div className="glass p-8 space-y-4">
-              <h2 className="text-xl font-semibold mb-6 flex items-center gap-2">
-                <Play className="w-5 h-5 text-blue-400" />
-                Quick Actions
-              </h2>
-              <button
-                onClick={() => handleAction('discord')}
-                className="w-full flex items-center justify-between p-4 bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/30 rounded-xl transition-all group"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-indigo-600 rounded-lg group-hover:scale-110 transition-transform">
-                    <Send className="w-5 h-5" />
+        {/* Right: Automation Center */}
+        <aside className="xl:col-span-1 space-y-6">
+          <div className="glass-panel p-8 sticky top-12">
+            <h2 className="text-xl font-bold mb-8 flex items-center gap-3">
+              <Play className="w-5 h-5 text-blue-400" />
+              Workflow Hub
+            </h2>
+
+            <div className="space-y-4">
+              {[
+                { id: 'discord', label: 'Discord Relay', icon: <Send />, color: 'bg-indigo-600', sub: 'Cross-post to server' },
+                { id: 'calendar', label: 'G-Calendar', icon: <Calendar />, color: 'bg-emerald-600', sub: 'Sync primary account' },
+                { id: 'instagram', label: 'Insta Feed', icon: <Instagram />, color: 'bg-pink-600', sub: 'Post to feed & story' },
+                { id: 'email', label: 'Broadcast', icon: <Mail />, color: 'bg-orange-600', sub: 'Send mass emails' },
+              ].map((act) => (
+                <button
+                  key={act.id}
+                  onClick={() => handleAction(act.id)}
+                  disabled={loading}
+                  className="w-full group flex items-center justify-between p-4 rounded-3xl bg-slate-800/40 hover:bg-slate-800/80 border border-slate-700/50 transition-all text-left"
+                >
+                  <div className="flex items-center gap-4">
+                    <div className={`p-3 ${act.color} rounded-2xl group-hover:rotate-6 transition-transform`}>
+                      {React.cloneElement(act.icon, { className: 'w-5 h-5' })}
+                    </div>
+                    <div>
+                      <div className="font-bold text-sm">{act.label}</div>
+                      <div className="text-[10px] text-slate-500 uppercase tracking-widest">{act.sub}</div>
+                    </div>
                   </div>
-                  <span>Discord Post</span>
-                </div>
-              </button>
+                  <ChevronRight className="w-4 h-4 text-slate-600 group-hover:translate-x-1 transition-transform" />
+                </button>
+              ))}
 
-              <button
-                onClick={() => handleAction('calendar')}
-                className="w-full flex items-center justify-between p-4 bg-cyan-600/20 hover:bg-cyan-600/30 border border-cyan-500/30 rounded-xl transition-all group"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-cyan-600 rounded-lg group-hover:scale-110 transition-transform">
-                    <Calendar className="w-5 h-5" />
-                  </div>
-                  <span>Google Calendar</span>
-                </div>
-              </button>
-
-              <button
-                onClick={() => handleAction('instagram')}
-                className="w-full flex items-center justify-between p-4 bg-pink-600/20 hover:bg-pink-600/30 border border-pink-500/30 rounded-xl transition-all group"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-pink-600 rounded-lg group-hover:scale-110 transition-transform">
-                    <Instagram className="w-5 h-5" />
-                  </div>
-                  <span>Instagram Post</span>
-                </div>
-              </button>
-
-              <button
-                onClick={() => handleAction('email')}
-                className="w-full flex items-center justify-between p-4 bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/30 rounded-xl transition-all group"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-emerald-600 rounded-lg group-hover:scale-110 transition-transform">
-                    <Mail className="w-5 h-5" />
-                  </div>
-                  <span>Group Emails</span>
-                </div>
-              </button>
-
-              <div className="pt-4 border-t border-slate-800">
+              <div className="mt-8 pt-8 border-t border-slate-800">
                 <button
                   onClick={() => handleAction('all')}
-                  className="w-full p-4 bg-blue-600 hover:bg-blue-500 rounded-xl font-bold transition-all shadow-lg shadow-blue-500/20"
+                  disabled={loading}
+                  className="w-full p-5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 rounded-3xl font-bold text-lg shadow-xl shadow-blue-500/30 transition-all flex items-center justify-center gap-3"
                 >
-                  Execute All Actions
+                  <Play className="w-6 h-6 fill-current" />
+                  Full Blast
                 </button>
               </div>
             </div>
 
-            <div className="glass p-6">
-              <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">System Info</h3>
-              <div className="space-y-2 text-xs text-slate-500">
-                <div className="flex justify-between">
-                  <span>Backend Status</span>
-                  <span className="text-emerald-500 font-medium">Online</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Connected Orgs</span>
-                  <span>1</span>
-                </div>
+            <div className="mt-12 p-3 bg-slate-900/50 rounded-2xl flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tighter">System Pulse</span>
               </div>
+              <span className="text-[10px] text-slate-400 font-mono">v1.2.0</span>
             </div>
           </div>
-        </div>
-      </div>
+        </aside>
+      </main>
     </div>
   );
 }

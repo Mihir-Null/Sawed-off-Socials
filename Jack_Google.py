@@ -12,8 +12,6 @@ import smtplib
 import csv
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-import tkinter as tk
-from tkinter import messagebox, filedialog
 import json
 from datetime import timedelta, datetime
 from zoneinfo import ZoneInfo
@@ -45,6 +43,10 @@ def load_event_details_from_file():
 
 def get_client_config():
     """Construct client configuration from environment variables."""
+    redirect_uris = os.environ.get("GOOGLE_REDIRECT_URI", "http://localhost:8000/api/auth/callback").split(",")
+    # Clean up any potential whitespace or quotes from the split
+    redirect_uris = [uri.strip().strip('"').strip("'") for uri in redirect_uris]
+    
     return {
         "web": {
             "client_id": os.environ.get("GOOGLE_CLIENT_ID"),
@@ -53,7 +55,7 @@ def get_client_config():
             "token_uri": "https://oauth2.googleapis.com/token",
             "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
             "client_secret": os.environ.get("GOOGLE_CLIENT_SECRET"),
-            "redirect_uris": [os.environ.get("GOOGLE_REDIRECT_URI", "http://localhost:8000/api/auth/callback")]
+            "redirect_uris": redirect_uris
         }
     }
 
@@ -215,4 +217,3 @@ def send_custom_emails(details, email_names):
     for email in email_names.split(","):
         recipient_email, subject, body = emails_dict[email]
         send_email_with_gmail_api(creds, recipient_email, subject, body)
-authenticate_user()

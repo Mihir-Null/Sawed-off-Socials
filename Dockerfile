@@ -23,7 +23,6 @@ COPY --from=frontend-build /app/frontend/dist ./frontend/dist
 # Copy backend and automation scripts
 COPY backend/ ./backend/
 COPY Jack_Discord.py Jack_Google.py Jack_Insta.py ./
-COPY .env ./
 # Create uploads directory
 RUN mkdir -p uploads
 # Expose the API port
