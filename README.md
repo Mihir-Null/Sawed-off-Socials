@@ -301,19 +301,8 @@ Sawed-off-Socials have been packaged for distribution in three ways: as a standa
 ## 1. Standalone Binary (Nuitka)
 For users who don't want to install Python, you can compile the app into a single executable. This version will launch the server and automatically open the UI in the default web browser.
 
-1.  **Install Nuitka**:
-    ```bash
-    pip install nuitka
-    ```
-2.  **Build the application**:
-    ```bash
-    python -m nuitka --onefile --standalone --include-data-dir=frontend/dist=frontend/dist --include-data-dir=backend=backend run_app.py
-    ```
-    - Replace `python` with `python3` if needed.
-    - The resulting executable will be in the `run_app.dist` or `run_app.bin` folder (or as `run_app.exe` on Windows).
-
 ## 2. Docker (Production)
-If you are hosting the app on a server, use the provided Dockerfile.
+If you are hosting the app on a server, use the provided Dockerfile. You must of course first clone the repository or use the link to source the docker image.
 
 1.  **Build the image**:
     ```bash
