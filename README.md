@@ -2,12 +2,11 @@
 Powerful social media automation for interest clubs and organizations. Sawed-off-Socials primarily automates posting to multiple social media accounts, including Discord, Instagram, and Google services. Currently automates discord event creation and announcement, emailing to lists, automatic custom emails, google calendar event creation, posting to Instagram as both a post and a story. This project is feature-complete but ultimately still a work in progress.
 
 # Usage
-The best way to use the bot is to clone the repository, create a new virtual environment for python using the requirements.txt and running main.py with python3. (To be fully implemented) However an .exe file has also been provided through pyinstaller, though this has not been as thoroughly tested.
+The best way to use the bot is to clone the repository, create a new virtual environment for python using the requirements.txt and running main.py with python3. However an .exe file has also been provided through pyinstaller, though this has not been as thoroughly tested.
 
 Once cloned go down to setup to create and load all required authentication keys. You then simply launch the application, enter in all fields for your event, and click the relevant buttons after saving. All event details will be saved locally and loaded on later uses so most setup only needs to occur the first time.
 
 ## Functions
-![image](https://github.com/user-attachments/assets/d297690b-bab4-4304-9bdc-cd68e2da0935)
 
 **Post to Discord**: Posts an announcement to discord and mentions everyone. Also creates a discord event to collect RSVPs. Event image is sent as an embed below the announcement
 
@@ -32,7 +31,6 @@ Sawed-off-Socials will automatically replace formatted fields with the relevant 
 
 
 ## Fields
-![image](https://github.com/user-attachments/assets/3e7bd455-6d2f-4882-a7e5-fc646079827b)
 1. **Event Name**  
    - Enter the name/title of the event.
    - This prefaces the event description and is used as the event title whenever relevant
@@ -53,11 +51,9 @@ Sawed-off-Socials will automatically replace formatted fields with the relevant 
 5. **Channel Name**  
    - Specify the name of the channel within the server where the event will be discussed or announced.  
 
-6. **Meeting Link** -> **Event Location**
-   - **This field serves as both the meeting link and the event location for the event. Whatever is put here is exactly what will be printed out when the bot announces where the event is happening and standard string formatting can be used**
-   - **This confusing naming is currently in the process of being fixed as it requires some refactoring**
-   - Provide a URL for the meeting and/or the event location.  
-   - This can be a Zoom, Google Meet, physical location reference or a combination of all, standard string formatting can be used to combine the fields.
+6. **Event Location / Meeting Link**
+   - Provide the physical location or a URL for the meeting.  
+   - This can be a Zoom, Google Meet, physical address, or a combination. Standard string formatting can be used to combine fields.
 
 8. **Event Date**  
    - Enter the event date in `YYYY-MM-DD` format.  
@@ -183,8 +179,7 @@ To obtain the `client_secret` for your Google Cloud app, follow these steps:
 #### **Step 3: Assign Required Permissions**
 1. **Go to "OAuth2" → "URL Generator"**:
    - Select **"Bot"** as a scope.
-   - Under "Bot Permissions," select:
-   - ![image](https://github.com/user-attachments/assets/835d553f-8550-4b83-9b59-d7e41ccb6bcc)
+   - Under "Bot Permissions," select standard permissions required for posting and creating events (Administrator or specific channel permissions).
    - You can also just give it Administrator permissions or all permissions but I'm not responsible if it goes rogue.
    - Copy the generated URL.
 
@@ -203,6 +198,7 @@ To post to Instagram using the Instagram Graph API, you need the following crede
 
 - **Instagram Access Token** (`INSTAGRAM_ACCESS_TOKEN`)  
 - **Instagram User ID** (`INSTAGRAM_USER_ID`)  
+- **Cloudinary Credentials** (Required for media hosting - see Cloudinary section below)
 
 ### **Step 1: Set Up a Meta (Facebook) App**
 1. **Go to the [Meta Developer Portal](https://developers.facebook.com/)**.  
