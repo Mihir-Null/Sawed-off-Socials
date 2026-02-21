@@ -325,10 +325,4 @@ If you are hosting the app on a server, use the provided Dockerfile.
     ```
 
 ## 3. Source Release (ZIP)
-To share the source code with others while excluding sensitive data:
-
-1.  **Create the ZIP**:
-    ```bash
-    zip -r Sawed-off-Socials.zip . -x "*.git*" "*__pycache__*" "*.env*" "token.json" "uploads/*" "frontend/node_modules/*"
-    ```
-    - This ensures that your local API keys and environment variables are not shared.
+Simply download the ZIP archive for the current development version from the code tab in the github repository.
