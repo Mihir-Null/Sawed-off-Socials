@@ -299,7 +299,7 @@ CLOUDINARY_API_SECRET=your-api-secret
 Sawed-off-Socials have been packaged for distribution in three ways: as a standalone binary, a Docker image, or a source ZIP.
 
 ## 1. Standalone Binary (Nuitka)
-For users who don't want to install Python, you can compile the app into a single executable. This version will launch the server and automatically open the UI in the default web browser.
+For users who don't want to install Python. This version will launch the server and automatically open the UI in the default web browser.
 
 ## 2. Docker (Production)
 If you are hosting the app on a server, use the provided Dockerfile. You must of course first clone the repository or use the link to source the docker image.
