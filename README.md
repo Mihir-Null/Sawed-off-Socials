@@ -105,6 +105,8 @@ All details that are inputted are read and saved into a dictionary called `detai
 
 
 # Setup and Authentication Keys
+All auth keys and API credentials should be stored in a .env file in the same directory as the Sawed-Off-Socials application/files. A .env.example file has been provided to show all required fields with instructions to obtain keys below. 
+
 ## Google
 The Google endpoints for Sawed-off-Socials rely on a Google Cloud App. The safest way to route your information for this is to create your own Google Cloud App for your club's use.
 To obtain the `client_secret` for your Google Cloud app, follow these steps:
@@ -149,8 +151,21 @@ To obtain the `client_secret` for your Google Cloud app, follow these steps:
 - A dialog box will show the **Client ID** and **Client Secret**.
 - Click **Download JSON** to save your credentials (this includes `client_secret`).
 
-### **6. Store It in the Sawed-off-Socials Folder**
-- Store your credentials in the same folder as the Sawed-off-Socials python scripts. **Guard this secret file closely**
+### **Step 6: Store Credentials in the `.env` File**
+Your `.env` should have the following entries added look like this (but with your actual keys):  
+
+```
+GOOGLE_CLIENT_ID=your_google_client_id_here
+GOOGLE_CLIENT_SECRET=your_google_client_secret_here
+GOOGLE_PROJECT_ID=your_google_project_id_here
+```
+
+If hosting as a webapp you must set your redirect URI to your public domain, otherwise, just leave it as the default localhost.
+```
+# The redirect URI must match what you set in GCP. 
+# Example: https://yourwebsitehere.com/api/auth/callback
+GOOGLE_REDIRECT_URI=http://localhost:8000/api/auth/callback
+```
 
 ## Discord
 ### **How to Create a Discord Bot and Store Its Credentials in a `.env` File**
