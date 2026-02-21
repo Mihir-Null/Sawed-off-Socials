@@ -1,0 +1,21 @@
+# Node
+frontend/node_modules
+frontend/dist
+frontend/.vite
+npm-debug.log
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.env
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+# Git
+.git
+.gitignore
+# OS
+.DS_Store
+Thumbs.db

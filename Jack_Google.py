@@ -22,7 +22,8 @@ import base64
 # File to store event details
 EVENT_DETAILS_FILE = "event_details.json"
 SCOPES = ['https://www.googleapis.com/auth/calendar', 'https://www.googleapis.com/auth/gmail.send']
-CLIENT_SECRET_FILE = 'client_secret.json'  # Update with your file path
+
+load_dotenv()
 
 def save_event_details_to_file(details):
     """Save event details to a JSON file."""
@@ -52,8 +53,25 @@ def authenticate_user():
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
         else:
-            flow = InstalledAppFlow.from_client_secrets_file(
-                CLIENT_SECRET_FILE, SCOPES
+            # Construct client configuration from environment variables
+            client_config = {
+                "web": {
+                    "client_id": os.environ.get("GOOGLE_CLIENT_ID"),
+                    "project_id": os.environ.get("GOOGLE_PROJECT_ID"),
+                    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                    "token_uri": "https://oauth2.googleapis.com/token",
+                    "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+                    "client_secret": os.environ.get("GOOGLE_CLIENT_SECRET"),
+                    "redirect_uris": os.environ.get("GOOGLE_REDIRECT_URIS", "http://localhost").split(",")
+                }
+            }
+            
+            # Check if essential credentials are present
+            if not client_config["web"]["client_id"] or not client_config["web"]["client_secret"]:
+                raise ValueError("GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET must be set in the .env file.")
+
+            flow = InstalledAppFlow.from_client_config(
+                client_config, SCOPES
             )
             creds = flow.run_local_server(port=0)
         

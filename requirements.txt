@@ -9,7 +9,6 @@ arrow==1.3.0
 asttokens==3.0.0
 async-lru==2.0.4
 attrs==25.1.0
-audioop-lts==0.2.1
 babel==2.17.0
 beautifulsoup4==4.13.2
 bleach==6.2.0
