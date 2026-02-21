@@ -2,9 +2,9 @@
 Powerful social media automation for interest clubs and organizations. Sawed-off-Socials primarily automates posting to multiple social media accounts, including Discord, Instagram, and Google services. Currently automates discord event creation and announcement, emailing to lists, automatic custom emails, google calendar event creation, posting to Instagram as both a post and a story. This project is feature-complete but ultimately still a work in progress.
 
 # Usage
-The best way to use the bot is to clone the repository, create a new virtual environment for python using the requirements.txt and running main.py with python3. However an .exe file has also been provided through pyinstaller, though this has not been as thoroughly tested.
+The best way to use the web app is through the provided docker image. If you are not using docker, you can use the standalone binary or source code. All relevant details can be found in the Installation and Releases section.
 
-Once cloned go down to setup to create and load all required authentication keys. You then simply launch the application, enter in all fields for your event, and click the relevant buttons after saving. All event details will be saved locally and loaded on later uses so most setup only needs to occur the first time.
+Once installed you must create and load all required authentication keys, stored securely in a ```.env``` file. You then simply launch the application, enter in all fields for your event, and launch relevant automations. All event details will be saved locally (via the sync config button, which is also called automatically on posting) and loaded on later uses so most setup only needs to occur the first time.
 
 ## Functions
 
@@ -99,7 +99,7 @@ Once all necessary fields are filled out, click **Save** to store the event deta
 
 
 ## A Note on General Customization
-It is important to note that all of these functions exist in the relevant Jack_[relevant cloud provider].py files and are all commented and written for readability. If you would like to customize the content, structure or sending of any of these functions, simply enter into these .py files and edit away to your heart's content. **This will not work for the .exe as it is pre-compiled, editing these for the exe will require rebuilding with pyinstaller**
+It is important to note that all of these functions exist in the relevant Jack_[relevant cloud provider].py files and are all commented and written for readability. If you would like to customize the content, structure or sending of any of these functions, simply enter into these .py files and edit away to your heart's content. This, of course, assumes you know what you're doing and can recompile the relevant docker image or are running directly from source
 
 All details that are inputted are read and saved into a dictionary called `details` details has all the fields specified in the `fields` variable in main.py. If you would like to add a field, for example website, simply add `"website"` into the fields array and the bot will automatically reconfigure all relevant GUI items. You can then use `details["website"]` anywhere in the code for your inputted website.
 
@@ -278,3 +278,42 @@ CLOUDINARY_CLOUD_NAME=your-cloud-name
 CLOUDINARY_API_KEY=your-api-key
 CLOUDINARY_API_SECRET=your-api-secret
 ```
+
+# Installation and Releases
+
+Sawed-off-Socials have been packaged for distribution in three ways: as a standalone binary, a Docker image, or a source ZIP.
+
+## 1. Standalone Binary (Nuitka)
+For users who don't want to install Python, you can compile the app into a single executable. This version will launch the server and automatically open the UI in the default web browser.
+
+1.  **Install Nuitka**:
+    ```bash
+    pip install nuitka
+    ```
+2.  **Build the application**:
+    ```bash
+    python -m nuitka --onefile --standalone --include-data-dir=frontend/dist=frontend/dist --include-data-dir=backend=backend run_app.py
+    ```
+    - Replace `python` with `python3` if needed.
+    - The resulting executable will be in the `run_app.dist` or `run_app.bin` folder (or as `run_app.exe` on Windows).
+
+## 2. Docker (Production)
+If you are hosting the app on a server, use the provided Dockerfile.
+
+1.  **Build the image**:
+    ```bash
+    docker build -t sawed-off-socials:latest .
+    ```
+2.  **Run the container**:
+    ```bash
+    docker run -p 8000:8000 --env-file .env sawed-off-socials:latest
+    ```
+
+## 3. Source Release (ZIP)
+To share the source code with others while excluding sensitive data:
+
+1.  **Create the ZIP**:
+    ```bash
+    zip -r Sawed-off-Socials.zip . -x "*.git*" "*__pycache__*" "*.env*" "token.json" "uploads/*" "frontend/node_modules/*"
+    ```
+    - This ensures that your local API keys and environment variables are not shared.
