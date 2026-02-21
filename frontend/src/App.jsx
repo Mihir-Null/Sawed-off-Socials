@@ -14,7 +14,7 @@ import {
   Loader2
 } from 'lucide-react';
 
-const API_BASE_URL = 'http://localhost:8000/api';
+const API_BASE_URL = window.location.origin + '/api';
 
 function App() {
   const [details, setDetails] = useState({});
@@ -24,6 +24,17 @@ function App() {
   useEffect(() => {
     fetchDetails();
   }, []);
+
+  const handleGoogleLogin = async () => {
+    setLoading(true);
+    try {
+      const response = await axios.get(`${API_BASE_URL}/auth/google`);
+      window.location.href = response.data.auth_url;
+    } catch (error) {
+      setStatus({ type: 'error', message: 'Failed to initiate Google login.' });
+      setLoading(false);
+    }
+  };
 
   const fetchDetails = async () => {
     try {
@@ -119,6 +130,14 @@ function App() {
           >
             {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
             <span>Save Details</span>
+          </button>
+          <button
+            onClick={handleGoogleLogin}
+            disabled={loading}
+            className="flex items-center space-x-2 bg-white/10 hover:bg-white/20 transition-colors px-6 py-2 rounded-full font-semibold disabled:opacity-50 border border-white/20"
+          >
+            <Calendar className="w-5 h-5 text-blue-400" />
+            <span>Login with Google</span>
           </button>
         </header>
 

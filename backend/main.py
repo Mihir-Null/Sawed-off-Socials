@@ -93,6 +93,24 @@ async def execute_action(action: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/auth/google")
+async def google_auth_init():
+    """Returns the Google authorization URL."""
+    try:
+        auth_url = Jack_Google.get_google_auth_url()
+        return {"auth_url": auth_url}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/auth/callback")
+async def google_auth_callback(code: str):
+    """Handles the Google OAuth callback and saves the token."""
+    try:
+        Jack_Google.handle_google_callback(code)
+        return {"status": "success", "message": "Authentication successful! You can close this tab."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 # Serve Frontend static files
 if os.path.exists(STATIC_DIR):
     app.mount("/assets", StaticFiles(directory=os.path.join(STATIC_DIR, "assets")), name="assets")

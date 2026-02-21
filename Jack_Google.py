@@ -43,6 +43,42 @@ def load_event_details_from_file():
     
     return details
 
+def get_client_config():
+    """Construct client configuration from environment variables."""
+    return {
+        "web": {
+            "client_id": os.environ.get("GOOGLE_CLIENT_ID"),
+            "project_id": os.environ.get("GOOGLE_PROJECT_ID"),
+            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+            "token_uri": "https://oauth2.googleapis.com/token",
+            "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+            "client_secret": os.environ.get("GOOGLE_CLIENT_SECRET"),
+            "redirect_uris": [os.environ.get("GOOGLE_REDIRECT_URI", "http://localhost:8000/api/auth/callback")]
+        }
+    }
+
+def get_google_auth_url():
+    """Generate the Google authorization URL."""
+    client_config = get_client_config()
+    flow = InstalledAppFlow.from_client_config(client_config, SCOPES)
+    # Use the first redirect URI from config
+    flow.redirect_uri = client_config["web"]["redirect_uris"][0]
+    auth_url, _ = flow.authorization_url(prompt='consent', access_type='offline')
+    return auth_url
+
+def handle_google_callback(code):
+    """Exchange authorization code for tokens and save to token.json."""
+    client_config = get_client_config()
+    flow = InstalledAppFlow.from_client_config(client_config, SCOPES)
+    flow.redirect_uri = client_config["web"]["redirect_uris"][0]
+    flow.fetch_token(code=code)
+    
+    creds = flow.credentials
+    token_file = "token.json"
+    with open(token_file, 'w') as token:
+        token.write(creds.to_json())
+    return creds
+
 def authenticate_user():
     creds = None
     token_file = "token.json"
@@ -53,30 +89,9 @@ def authenticate_user():
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
         else:
-            # Construct client configuration from environment variables
-            client_config = {
-                "web": {
-                    "client_id": os.environ.get("GOOGLE_CLIENT_ID"),
-                    "project_id": os.environ.get("GOOGLE_PROJECT_ID"),
-                    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-                    "token_uri": "https://oauth2.googleapis.com/token",
-                    "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-                    "client_secret": os.environ.get("GOOGLE_CLIENT_SECRET"),
-                    "redirect_uris": os.environ.get("GOOGLE_REDIRECT_URIS", "http://localhost").split(",")
-                }
-            }
-            
-            # Check if essential credentials are present
-            if not client_config["web"]["client_id"] or not client_config["web"]["client_secret"]:
-                raise ValueError("GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET must be set in the .env file.")
-
-            flow = InstalledAppFlow.from_client_config(
-                client_config, SCOPES
-            )
-            creds = flow.run_local_server(port=0)
-        
-        with open(token_file, 'w') as token:
-            token.write(creds.to_json())
+            # For web flow, we raise an error if tokens are missing.
+            # The UI should handle redirecting to get_google_auth_url()
+            raise ValueError("Google authentication tokens missing or invalid. Please login again.")
     
     return creds
 
