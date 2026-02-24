@@ -1,4 +1,7 @@
-![Project Logo](logo.png)
+<p align="center">
+  <img src="logo.png" alt="Social-Blaster">
+</p>
+
 
 # Sawed-off-Socials
 Powerful social media automation for interest clubs and organizations. Sawed-off-Socials primarily automates posting to multiple social media accounts, including Discord, Instagram, and Google services. Currently automates discord event creation and announcement, emailing to lists, automatic custom emails, google calendar event creation, posting to Instagram as both a post and a story. This project is feature-complete but ultimately still a work in progress.
