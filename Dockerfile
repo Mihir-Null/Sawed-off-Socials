@@ -17,12 +17,11 @@ RUN apt-get update && apt-get install -y \
 # Install Python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-RUN pip install --no-cache-dir fastapi uvicorn python-multipart
 # Copy built frontend assets
 COPY --from=frontend-build /app/frontend/dist ./frontend/dist
 # Copy backend and automation scripts
 COPY backend/ ./backend/
-COPY Jack_Discord.py Jack_Google.py Jack_Insta.py ./
+COPY Jack_Discord.py Jack_Google.py Jack_Insta.py utils.py ./
 # Create uploads directory
 RUN mkdir -p uploads
 # Expose the API port

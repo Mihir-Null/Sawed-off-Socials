@@ -1,12 +1,15 @@
 import os
-import json
+import asyncio
+import logging
+
 import requests
-import time
 import cloudinary
 import cloudinary.uploader
 from dotenv import load_dotenv
 
 load_dotenv()
+
+logger = logging.getLogger("sawed-off.instagram")
 
 # Configure Cloudinary if credentials exist
 CLOUDINARY_CLOUD_NAME = os.environ.get("CLOUDINARY_CLOUD_NAME")
@@ -18,137 +21,129 @@ if CLOUDINARY_CLOUD_NAME and CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET:
         cloud_name=CLOUDINARY_CLOUD_NAME,
         api_key=CLOUDINARY_API_KEY,
         api_secret=CLOUDINARY_API_SECRET,
-        secure=True
+        secure=True,
     )
 
-def instagram_post(details):
-    """
-    Post an image and description to Instagram Feed & Story using the Instagram Graph API.
-    Supports local images by uploading them to Cloudinary first if configured.
-    """
-    print(f"[Instagram] Initializing campaign broadcast...")
+
+async def _post(url, data):
+    """Run a blocking requests.post in a thread to avoid blocking the event loop."""
+    return await asyncio.to_thread(requests.post, url, data=data)
+
+
+async def _upload_and_publish(instagram_user_id, instagram_access_token, image_url, label, payload_extra=None):
+    """Upload media to Instagram and publish it with retry logic."""
+    upload_url = f"https://graph.facebook.com/v22.0/{instagram_user_id}/media"
+    publish_url = f"https://graph.facebook.com/v22.0/{instagram_user_id}/media_publish"
+
+    upload_payload = {
+        "image_url": image_url,
+        "access_token": instagram_access_token,
+    }
+    if payload_extra:
+        upload_payload.update(payload_extra)
+
+    logger.info("[Instagram] [%s] Uploading media...", label)
+    response = await _post(upload_url, upload_payload)
+    response_data = response.json()
+
+    if "id" not in response_data:
+        error_msg = response_data.get("error", {}).get("message", "Unknown error")
+        if "Invalid OAuth access token" in error_msg:
+            error_msg += " (Ensure you are using a Facebook Graph API token, not a Basic Display token)"
+        raise RuntimeError(f"{label} upload error: {error_msg}\nFull Response: {response_data}")
+
+    creation_id = response_data["id"]
+
+    logger.info("[Instagram] [%s] Waiting 60s for media processing...", label)
+    await asyncio.sleep(60)
+
+    logger.info("[Instagram] [%s] Publishing post...", label)
+    publish_payload = {
+        "creation_id": creation_id,
+        "access_token": instagram_access_token,
+    }
+    if payload_extra and "is_story" in payload_extra:
+        publish_payload["is_story"] = "true"
+
+    retries = 5
+    while retries > 0:
+        pub_response = await _post(publish_url, publish_payload)
+        pub_data = pub_response.json()
+
+        if "id" in pub_data:
+            logger.info("[Instagram] %s published successfully!", label)
+            return pub_data["id"]
+
+        error_code = pub_data.get("error", {}).get("code")
+        if error_code == 9007:
+            logger.info(
+                "[Instagram] [%s] Media still not ready. Retrying in 15s... (%d retries left)",
+                label, retries,
+            )
+            await asyncio.sleep(15)
+            retries -= 1
+        else:
+            raise RuntimeError(f"{label} publish error: {pub_data}")
+
+    raise RuntimeError(f"{label} publish timed out: Media was never ready for {creation_id}")
+
+
+async def instagram_post(details):
+    """Post an image to Instagram Feed & Story using the Instagram Graph API."""
+    logger.info("[Instagram] Initializing campaign broadcast...")
     try:
         instagram_access_token = os.environ.get("INSTAGRAM_ACCESS_TOKEN")
         instagram_user_id = os.environ.get("INSTAGRAM_USER_ID")
-        
+
         if not instagram_access_token or not instagram_user_id:
             raise ValueError("Instagram credentials missing from .env")
 
-        # Proactive check for common token error (Basic Display vs Graph API)
         if instagram_access_token.startswith("IGAAT"):
-            print("[Instagram] WARNING: Detected an Instagram Basic Display token (starts with IGAAT).")
-            print("[Instagram] WARNING: Content publishing requires a Facebook Graph API token.")
+            logger.warning(
+                "[Instagram] WARNING: Detected an Instagram Basic Display token (starts with IGAAT)."
+            )
+            logger.warning(
+                "[Instagram] WARNING: Content publishing requires a Facebook Graph API token."
+            )
 
-        asset_path = details.get('image', '')
+        asset_path = details.get("image", "")
         if not asset_path:
             raise ValueError("No image provided in event details")
 
         image_url = asset_path
 
-        # If it's a local file, we MUST upload it to a public URL for Instagram to see it
+        # If local file, upload to Cloudinary for a public URL
         if os.path.exists(asset_path):
             if CLOUDINARY_CLOUD_NAME:
-                print(f"[Instagram] Local file detected: {asset_path}. Uploading to Cloudinary...")
-                upload_result = cloudinary.uploader.upload(asset_path)
+                logger.info("[Instagram] Local file detected: %s. Uploading to Cloudinary...", asset_path)
+                upload_result = await asyncio.to_thread(cloudinary.uploader.upload, asset_path)
                 image_url = upload_result.get("secure_url")
-                print(f"[Instagram] Successfully uploaded to Cloudinary: {image_url}")
+                logger.info("[Instagram] Successfully uploaded to Cloudinary: %s", image_url)
             else:
-                print(f"[Instagram] WARNING: Local file detected but Cloudinary is not configured.")
-                print(f"[Instagram] WARNING: Instagram API requires a publicly accessible URL.")
-                # We'll try to use the path anyway to let the API return the specific error if it fails
+                logger.warning("[Instagram] Local file detected but Cloudinary is not configured.")
+                logger.warning("[Instagram] Instagram API requires a publicly accessible URL.")
                 image_url = os.path.abspath(asset_path)
 
-        # Step 1: Upload the image for feed post
-        print(f"[Instagram] [Feed] Uploading media: {os.path.basename(asset_path)}")
-        image_upload_url = f"https://graph.facebook.com/v22.0/{instagram_user_id}/media"
-        image_payload = {
-            "image_url": image_url,
-            "caption": f"{details.get('event_name', 'Event')}\n\n{details.get('description', '')}",
-            "access_token": instagram_access_token
-        }
-        image_response = requests.post(image_upload_url, data=image_payload)
-        image_response_data = image_response.json()
+        caption = f"{details.get('event_name', 'Event')}\n\n{details.get('description', '')}"
 
-        if "id" not in image_response_data:
-            error_msg = image_response_data.get("error", {}).get("message", "Unknown error")
-            if "Invalid OAuth access token" in error_msg:
-                error_msg += " (Ensure you are using a Facebook Graph API token, not a Basic Display token)"
-            raise RuntimeError(f"Feed upload error: {error_msg}\nFull Response: {image_response_data}")
+        # Post to Feed
+        await _upload_and_publish(
+            instagram_user_id,
+            instagram_access_token,
+            image_url,
+            "Feed",
+            payload_extra={"caption": caption},
+        )
 
-        creation_id = image_response_data["id"]
-
-        # Step 2: Publish the uploaded image to Feed (with retry for processing delay)
-        print(f"[Instagram] [Feed] Waiting 60s for initial media processing...")
-        time.sleep(60)
-        print(f"[Instagram] [Feed] Publishing post...")
-        publish_url = f"https://graph.facebook.com/v22.0/{instagram_user_id}/media_publish"
-        publish_payload = {
-            "creation_id": creation_id,
-            "access_token": instagram_access_token
-        }
-        
-        retries = 5
-        while retries > 0:
-            publish_response = requests.post(publish_url, data=publish_payload)
-            publish_response_data = publish_response.json()
-
-            if "id" in publish_response_data:
-                print("[Instagram] Feed post successful!")
-                break
-            
-            error_code = publish_response_data.get("error", {}).get("code")
-            if error_code == 9007:
-                print(f"[Instagram] [Feed] Media still not ready. Retrying in 15s... ({retries} retries left)")
-                time.sleep(15)
-                retries -= 1
-            else:
-                raise RuntimeError(f"Feed publish error: {publish_response_data}")
-        else:
-            raise RuntimeError(f"Feed publish timed out: Media was never ready for {creation_id}")
-
-        # Step 3: Upload the image for Story
-        print(f"[Instagram] [Story] Uploading media...")
-        story_payload = {
-            "image_url": image_url,
-            "access_token": instagram_access_token
-        }
-        story_response = requests.post(image_upload_url, data=story_payload)
-        story_response_data = story_response.json()
-
-        if "id" not in story_response_data:
-            raise RuntimeError(f"Story upload error: {story_response_data}")
-
-        story_creation_id = story_response_data["id"]
-
-        # Step 4: Publish the uploaded image as a Story (with retry for processing delay)
-        print(f"[Instagram] [Story] Waiting 60s for initial media processing...")
-        time.sleep(60)
-        print(f"[Instagram] [Story] Launching story...")
-        story_publish_payload = {
-            "creation_id": story_creation_id,
-            "is_story": "true",
-            "access_token": instagram_access_token
-        }
-        
-        retries = 5
-        while retries > 0:
-            story_publish_response = requests.post(publish_url, data=story_publish_payload)
-            story_publish_response_data = story_publish_response.json()
-
-            if "id" in story_publish_response_data:
-                print("[Instagram] Story published successfully!")
-                break
-            
-            error_code = story_publish_response_data.get("error", {}).get("code")
-            if error_code == 9007:
-                print(f"[Instagram] [Story] Media still not ready. Retrying in 15s... ({retries} retries left)")
-                time.sleep(15)
-                retries -= 1
-            else:
-                raise RuntimeError(f"Story publish error: {story_publish_response_data}")
-        else:
-            raise RuntimeError(f"Story publish timed out: Media was never ready for {story_creation_id}")
+        # Post to Story
+        await _upload_and_publish(
+            instagram_user_id,
+            instagram_access_token,
+            image_url,
+            "Story",
+            payload_extra={"is_story": "true"},
+        )
 
     except Exception as e:
-        print(f"[Instagram] ERROR: {e}")
-        raise e
+        logger.error("[Instagram] ERROR: %s", e)
+        raise

@@ -1,174 +1,218 @@
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+import os
+import sys
+import uuid
+import json
+import asyncio
+import shutil
+import logging
+import re
+
+from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-import os
-import json
-import shutil
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional
-from datetime import datetime, timedelta
-from zoneinfo import ZoneInfo
 
-# Import existing automation logic
-import sys
+# Fix import path so Jack_* modules (in project root) are importable
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import Jack_Discord
 import Jack_Google
 import Jack_Insta
+from utils import (
+    log_handler,
+    load_event_details,
+    save_event_details,
+    EVENT_DETAILS_FILE,
+    BASE_DIR,
+)
 
-import sys
-import io
-import threading
-from collections import deque
+logger = logging.getLogger("sawed-off.api")
 
-# --- Logging Infrastructure ---
-class LogBuffer(io.StringIO):
-    def __init__(self, maxlen=500):
-        super().__init__()
-        self.buffer = deque(maxlen=maxlen)
-        self.lock = threading.Lock()
+# --- Pydantic Validation Model ---
 
-    def write(self, s):
-        if s:
-            with self.lock:
-                # Add timestamp to each log line for the console
-                timestamp = datetime.now().strftime("%H:%M:%S")
-                # Strip trailing newlines to avoid empty lines in the UI
-                clean_s = s.rstrip('\n')
-                if clean_s:
-                    for line in clean_s.split('\n'):
-                        self.buffer.append(f"[{timestamp}] {line}")
-        return super().write(s)
+class EventDetails(BaseModel):
+    event_name: str = Field(default="", max_length=200)
+    description: str = Field(default="", max_length=5000)
+    image: str = Field(default="")
+    server_name: str = Field(default="", max_length=100)
+    channel_name: str = Field(default="", max_length=100)
+    meeting_link: str = Field(default="", max_length=500)
+    event_date: str = Field(default="")
+    event_time: str = Field(default="")
+    timezone: str = Field(default="America/New_York")
+    calendar_name: str = Field(default="", max_length=200)
+    csv_file: str = Field(default="")
+    email_column: str = Field(default="Email", max_length=100)
+    event_duration: int = Field(default=1, ge=1, le=24)
+    club_name: str = Field(default="", max_length=200)
+    custom_emails_list: str = Field(default="", alias="custom emails list")
+    more_info_link: str = Field(default="", max_length=500)
 
-    def get_logs(self):
-        with self.lock:
-            return list(self.buffer)
+    model_config = {"populate_by_name": True}
 
-log_buffer = LogBuffer()
-# Intercept stdout and stderr
-sys.stdout = log_buffer
-sys.stderr = log_buffer
+    @field_validator("event_date")
+    @classmethod
+    def validate_date(cls, v):
+        if v and not re.match(r"^\d{4}-\d{2}-\d{2}$", v):
+            raise ValueError("Date must be YYYY-MM-DD format")
+        return v
 
-def normalize_timezone(tz_name):
-    """Maps common timezone abbreviations to IANA names."""
-    if not tz_name:
-        return "UTC"
-    mapping = {
-        "EST": "America/New_York",
-        "EDT": "America/New_York",
-        "CST": "America/Chicago",
-        "CDT": "America/Chicago",
-        "MST": "America/Denver",
-        "MDT": "America/Denver",
-        "PST": "America/Los_Angeles",
-        "PDT": "America/Los_Angeles",
-    }
-    normalized = mapping.get(str(tz_name).upper(), tz_name)
-    if normalized != tz_name:
-        print(f"[System] Normalizing timezone '{tz_name}' -> '{normalized}'")
-    return normalized
+    @field_validator("event_time")
+    @classmethod
+    def validate_time(cls, v):
+        if v and not re.match(r"^\d{2}:\d{2}$", v):
+            raise ValueError("Time must be HH:MM format")
+        return v
+
 
 # --- App Initialization ---
+
 app = FastAPI()
 
-# Enable CORS for frontend development
+CORS_ORIGINS = os.environ.get(
+    "CORS_ORIGINS", "http://localhost:8000,http://localhost:5173"
+).split(",")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Adjust as needed for production
+    allow_origins=[o.strip() for o in CORS_ORIGINS],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Paths
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-EVENT_DETAILS_FILE = os.path.join(BASE_DIR, "event_details.json")
+# --- Paths ---
+
 UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
 STATIC_DIR = os.path.join(BASE_DIR, "frontend", "dist")
 
-if not os.path.exists(UPLOAD_DIR):
-    os.makedirs(UPLOAD_DIR)
+os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-def load_details():
-    if os.path.exists(EVENT_DETAILS_FILE) and os.path.getsize(EVENT_DETAILS_FILE) > 0:
-        with open(EVENT_DETAILS_FILE, "r") as file:
-            details = json.load(file)
-            details['timezone'] = normalize_timezone(details.get('timezone', 'UTC'))
-            return details
-    return {}
+# --- Upload Security ---
 
-def save_details(details):
-    with open(EVENT_DETAILS_FILE, "w") as file:
-        json.dump(details, file, indent=4)
+ALLOWED_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".csv"}
+MAX_UPLOAD_SIZE = 10 * 1024 * 1024  # 10 MB
+
+
+# --- API Endpoints ---
 
 @app.get("/api/details")
 async def get_details():
-    return load_details()
+    return load_event_details()
+
 
 @app.post("/api/details")
-async def update_details(details: dict):
-    save_details(details)
+async def update_details(details: EventDetails):
+    save_event_details(details.model_dump(by_alias=True))
     return {"status": "success", "message": "Details updated"}
+
 
 @app.post("/api/upload")
 async def upload_file(file: UploadFile = File(...)):
-    file_path = os.path.join(UPLOAD_DIR, file.filename)
+    safe_name = os.path.basename(file.filename or "upload")
+    _, ext = os.path.splitext(safe_name)
+
+    if ext.lower() not in ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"File type '{ext}' not allowed. Accepted: {sorted(ALLOWED_EXTENSIONS)}",
+        )
+
+    unique_name = f"{uuid.uuid4().hex}_{safe_name}"
+    file_path = os.path.join(UPLOAD_DIR, unique_name)
+
+    size = 0
     with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+        while chunk := await file.read(8192):
+            size += len(chunk)
+            if size > MAX_UPLOAD_SIZE:
+                os.remove(file_path)
+                raise HTTPException(status_code=413, detail="File too large (max 10 MB)")
+            buffer.write(chunk)
+
     return {"status": "success", "file_path": file_path}
+
 
 @app.post("/api/actions/{action}")
 async def execute_action(action: str):
-    details = load_details()
+    details = load_event_details()
     try:
         if action == "discord":
             await Jack_Discord.run_discord_task(details)
         elif action == "email":
-            Jack_Google.send_email_to_list(details)
+            await asyncio.to_thread(Jack_Google.send_email_to_list, details)
         elif action == "calendar":
-            Jack_Google.add_to_google_calendar(details)
+            await asyncio.to_thread(Jack_Google.add_to_google_calendar, details)
         elif action == "instagram":
-            Jack_Insta.instagram_post(details)
+            await Jack_Insta.instagram_post(details)
         elif action == "custom":
-            Jack_Google.send_custom_emails(details, details.get("custom emails list", ""))
+            await asyncio.to_thread(
+                Jack_Google.send_custom_emails,
+                details,
+                details.get("custom emails list", ""),
+            )
         elif action == "all":
-            await Jack_Discord.run_discord_task(details)
-            Jack_Google.send_email_to_list(details)
-            Jack_Google.add_to_google_calendar(details)
-            Jack_Insta.instagram_post(details)
-            Jack_Google.send_custom_emails(details, details.get("custom emails list", ""))
+            results = await asyncio.gather(
+                Jack_Discord.run_discord_task(details),
+                asyncio.to_thread(Jack_Google.send_email_to_list, details),
+                asyncio.to_thread(Jack_Google.add_to_google_calendar, details),
+                Jack_Insta.instagram_post(details),
+                asyncio.to_thread(
+                    Jack_Google.send_custom_emails,
+                    details,
+                    details.get("custom emails list", ""),
+                ),
+                return_exceptions=True,
+            )
+
+            errors = []
+            action_names = ["discord", "email", "calendar", "instagram", "custom_emails"]
+            for name, result in zip(action_names, results):
+                if isinstance(result, Exception):
+                    logger.error("[%s] Failed: %s", name, result)
+                    errors.append(f"{name}: {result}")
+
+            if errors:
+                raise HTTPException(
+                    status_code=207,
+                    detail={"partial_failures": errors, "message": "Some actions failed"},
+                )
+
+            return {"status": "success", "message": "All actions executed"}
         else:
             raise HTTPException(status_code=400, detail="Invalid action")
-            
+
         return {"status": "success", "message": f"Action {action} executed"}
+    except HTTPException:
+        raise
     except Exception as e:
-        import traceback
-        traceback.print_exc()
+        logger.exception("[Action] %s failed", action)
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.get("/api/auth/status")
 async def google_auth_status():
-    """Returns the current authentication status (logged in user email)."""
     return Jack_Google.get_auth_status()
+
 
 @app.get("/api/logs")
 async def get_app_logs():
-    """Returns the captured stdout/stderr logs."""
-    return {"logs": log_buffer.get_logs()}
+    return {"logs": log_handler.get_logs()}
+
 
 @app.get("/api/auth/google")
 async def google_auth_init():
-    """Returns the Google authorization URL."""
     try:
         auth_url = Jack_Google.get_google_auth_url()
         return {"auth_url": auth_url}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @app.get("/api/auth/callback")
 async def google_auth_callback(code: str):
-    """Handles the Google OAuth callback and saves the token."""
     try:
         Jack_Google.handle_google_callback(code)
         from fastapi.responses import RedirectResponse
@@ -176,21 +220,22 @@ async def google_auth_callback(code: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# Serve Frontend static files
+
+# --- Serve Frontend ---
+
 if os.path.exists(STATIC_DIR):
     app.mount("/assets", StaticFiles(directory=os.path.join(STATIC_DIR, "assets")), name="assets")
-    # Also mount the uploads directory so images can be served if a tunnel is used
     if os.path.exists(UPLOAD_DIR):
         app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
     @app.get("/{full_path:path}")
     async def serve_frontend(full_path: str):
-        # Serve index.html for all non-API routes to handle SPA routing
         if not full_path.startswith("api"):
             index_path = os.path.join(STATIC_DIR, "index.html")
             if os.path.exists(index_path):
                 return FileResponse(index_path)
         raise HTTPException(status_code=404, detail="Not found")
+
 
 if __name__ == "__main__":
     import uvicorn
