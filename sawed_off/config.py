@@ -55,6 +55,8 @@ UPLOAD_DIR = DATA_DIR / "uploads"
 EVENT_DETAILS_FILE = DATA_DIR / "event_details.json"
 CUSTOM_EMAILS_FILE = DATA_DIR / "custom_emails.json"
 GOOGLE_TOKEN_FILE = DATA_DIR / "google_token.json"
+INSTAGRAM_TOKEN_FILE = DATA_DIR / "instagram_token.json"
+OPERATORS_FILE = DATA_DIR / "operators.json"
 
 FRONTEND_DIST = BASE_DIR / "frontend" / "dist"
 
@@ -142,6 +144,14 @@ def normalize_timezone(tz_name: str | None) -> str:
 def app_password() -> str | None:
     """Shared password protecting the web UI. ``None`` means no login required."""
     return env("APP_PASSWORD")
+
+
+def public_url_is_https() -> bool:
+    """True when the app is reachable over HTTPS from the internet (needed to
+    hand Instagram a link to an uploaded image without Cloudinary)."""
+    if env_bool("SOS_PUBLIC_IMAGE_HOSTING"):
+        return True
+    return public_base_url().startswith("https://")
 
 
 def public_base_url() -> str:

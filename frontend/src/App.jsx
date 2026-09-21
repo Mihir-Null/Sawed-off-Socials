@@ -9,6 +9,7 @@ import { ACTIONS } from './actions';
 import { JobPanel } from './components/JobPanel';
 import { LogConsole } from './components/LogConsole';
 import { LoginGate } from './components/LoginGate';
+import { ConnectionsPanel } from './components/ConnectionsPanel';
 import { Toast } from './components/Toast';
 import { ConfirmDialog } from './components/ConfirmDialog';
 
@@ -23,8 +24,9 @@ export default function App() {
   const [session, setSession] = useState(null); // {auth_required, authenticated, version}
   const [details, setDetails] = useState(null);
   const [savedSnapshot, setSavedSnapshot] = useState('');
-  const [google, setGoogle] = useState({ configured: false, logged_in: false, email: null });
   const [checks, setChecks] = useState({});
+  const [connectionsOpen, setConnectionsOpen] = useState(() => /[?&](google|instagram|login)=/.test(window.location.search));
+  const [loginNotice, setLoginNotice] = useState(null);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null);
   const [debugMode, setDebugMode] = useState(false);
@@ -74,18 +76,23 @@ export default function App() {
       } catch (err) {
         notify('error', `Could not load saved event: ${describeError(err)}`, 0);
       }
-      api.googleStatus().then(setGoogle).catch(() => {});
       refreshChecks();
     })();
   }, [loggedIn, notify, refreshChecks]);
 
-  // Google OAuth redirects back with ?google=ok|error. Show it once, then clean the URL.
+  // OAuth redirects come back with ?google=, ?instagram= or ?login=. Show once, then clean the URL.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const result = params.get('google');
-    if (!result) return;
-    if (result === 'ok') notify('success', `Google connected${params.get('email') ? ` as ${params.get('email')}` : ''}`);
-    else notify('error', `Google sign-in failed (${params.get('reason') || 'unknown'}). Check the server log.`, 0);
+    const google = params.get('google');
+    const instagram = params.get('instagram');
+    const login = params.get('login');
+    if (!google && !instagram && !login) return;
+    if (google === 'ok') notify('success', `Google connected as ${params.get('email') || 'the club account'}`);
+    if (google === 'error') notify('error', `Google connection failed (${params.get('reason') || 'unknown'}). Check the server log.`, 0);
+    if (instagram === 'ok') notify('success', `Instagram connected as @${params.get('username') || '?'}`);
+    if (instagram === 'error') notify('error', `Instagram connection failed (${params.get('reason') || 'unknown'}). Check the server log.`, 0);
+    if (login === 'ok') notify('success', `Signed in as ${params.get('email')}`);
+    if (login === 'denied') setLoginNotice({ type: 'error', message: `${params.get('email')} is not on the officers list. Ask an existing officer to add you.` });
     window.history.replaceState({}, '', window.location.pathname);
   }, [notify]);
 
@@ -138,19 +145,6 @@ export default function App() {
     else runAction(action);
   };
 
-  const googleLogin = async () => {
-    try {
-      const { auth_url } = await api.googleLoginUrl();
-      window.location.href = auth_url;
-    } catch (err) {
-      notify('error', describeError(err), 0);
-    }
-  };
-  const googleLogout = async () => {
-    await api.googleLogout().catch(() => {});
-    setGoogle((g) => ({ ...g, logged_in: false, email: null }));
-    refreshChecks();
-  };
   const appLogout = async () => {
     await api.logout().catch(() => {});
     setSession((s) => ({ ...s, authenticated: false }));
@@ -158,28 +152,28 @@ export default function App() {
 
   // --- render ---------------------------------------------------------------
   if (!session) return <div className="min-h-screen flex items-center justify-center text-fg2">Connecting…</div>;
-  if (!loggedIn) return <LoginGate onLoggedIn={loadSession} />;
+  if (!loggedIn) return <LoginGate session={session} notice={loginNotice} onLoggedIn={loadSession} />;
 
   return (
     <div className={`min-h-screen px-4 py-6 md:px-8 transition-[padding] ${debugMode ? 'md:pr-[480px]' : ''}`}>
       <div className="max-w-6xl mx-auto space-y-6">
         <Header
-          google={google}
-          onGoogleLogin={googleLogin}
-          onGoogleLogout={googleLogout}
-          authRequired={session.auth_required}
+          session={session}
           onLogout={appLogout}
           debugMode={debugMode}
           setDebugMode={setDebugMode}
-          version={session.version}
+          connectionsOpen={connectionsOpen}
+          setConnectionsOpen={setConnectionsOpen}
         />
 
         {!session.auth_required && (
           <div className="flex items-start gap-3 text-xs text-yellow border-2 border-yellow/40 rounded-lg px-4 py-3 bg-bg1">
             <ShieldAlert size={16} className="shrink-0" />
-            <span>No password is set. Anyone who can reach this address can post as your club. Set <code>APP_PASSWORD</code> in <code>.env</code> before exposing it to the internet.</span>
+            <span>No login is configured. Anyone who can reach this address can post as your club. Set <code>APP_PASSWORD</code> in <code>.env</code>, or add officers under Connections, before exposing it to the internet.</span>
           </div>
         )}
+
+        <ConnectionsPanel notify={notify} session={session} onChange={refreshChecks} open={connectionsOpen} setOpen={setConnectionsOpen} />
 
         <JobPanel job={job} onClear={clear} />
 

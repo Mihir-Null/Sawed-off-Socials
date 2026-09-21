@@ -63,7 +63,17 @@ async function request(path, { method = 'GET', body, form } = {}) {
 export const api = {
   session: () => request('/auth/session'),
   login: (password) => request('/auth/login', { method: 'POST', body: { password } }),
+  googleSignInUrl: () => request('/auth/google'),
   logout: () => request('/auth/logout', { method: 'POST' }),
+
+  connections: (verify = false) => request(`/connections${verify ? '?verify=true' : ''}`),
+  operators: () => request('/operators'),
+  addOperator: (email) => request('/operators', { method: 'POST', body: { email } }),
+  removeOperator: (email) => request(`/operators/${encodeURIComponent(email)}`, { method: 'DELETE' }),
+  instagramLoginUrl: () => request('/instagram/login'),
+  instagramDisconnect: () => request('/instagram/disconnect', { method: 'POST' }),
+  discordServers: () => request('/discord/servers'),
+  discordChannels: (serverId) => request(`/discord/servers/${serverId}/channels`),
 
   getDetails: () => request('/details'),
   saveDetails: (details) => request('/details', { method: 'POST', body: details }),

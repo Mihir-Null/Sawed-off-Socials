@@ -58,6 +58,7 @@ class Job:
     finished_at: str | None = None
     error: str | None = None
     result: Any = None
+    started_by: str | None = None  # who pressed the button (officer email or "password")
     log: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
@@ -70,6 +71,7 @@ class Job:
             "finished_at": self.finished_at,
             "error": self.error,
             "result": self.result,
+            "started_by": self.started_by,
             "log": list(self.log),
             "done": self.status in ("succeeded", "failed"),
         }
@@ -95,7 +97,7 @@ class JobManager:
     def list(self) -> list[Job]:
         return list(reversed(self._jobs.values()))
 
-    def start(self, action: str, fn: Callable[[], Any]) -> Job:
+    def start(self, action: str, fn: Callable[[], Any], started_by: str | None = None) -> Job:
         """Run ``fn`` in a daemon thread. Raises ``JobAlreadyRunning`` if busy."""
         with self._lock:
             if self._running is not None and self._running.status == "running":
@@ -103,7 +105,7 @@ class JobManager:
                     f"'{self._running.action}' is still running (job {self._running.id}). "
                     "Wait for it to finish before starting another action."
                 )
-            job = Job(id=uuid.uuid4().hex[:12], action=action)
+            job = Job(id=uuid.uuid4().hex[:12], action=action, started_by=started_by)
             self._jobs[job.id] = job
             while len(self._jobs) > MAX_KEPT_JOBS:
                 self._jobs.popitem(last=False)
@@ -118,7 +120,7 @@ class JobManager:
     def _run(self, job: Job, fn: Callable[[], Any]) -> None:
         _thread_local.job = job
         try:
-            log.info("[Job %s] Starting '%s'", job.id, job.action)
+            log.info("[Job %s] Starting '%s' (by %s)", job.id, job.action, job.started_by or "unknown")
             job.result = fn()
             job.status = "succeeded"
             log.info("[Job %s] '%s' finished successfully", job.id, job.action)

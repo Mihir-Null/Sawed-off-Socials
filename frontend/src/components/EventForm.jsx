@@ -56,6 +56,73 @@ function FileField({ label, name, value, accept, hint, onUploaded, notify }) {
   );
 }
 
+/**
+ * Discord server + channel pickers. Lists come from the bot's own view of
+ * Discord; if the bot is not configured (or the request fails) the plain
+ * text inputs are shown instead so nothing is ever blocked.
+ */
+function DiscordTargets({ details, onChange }) {
+  const [servers, setServers] = useState(null); // null = unknown yet, [] = none, false = unavailable
+  const [fetched, setFetched] = useState({ serverId: '', channels: [] });
+  const [why, setWhy] = useState('');
+
+  useEffect(() => {
+    api.discordServers().then((r) => setServers(r.servers)).catch((err) => { setServers(false); setWhy(describeError(err)); });
+  }, []);
+
+  useEffect(() => {
+    const id = details.server_id;
+    if (!id || servers === false) return undefined;
+    let cancelled = false;
+    api.discordChannels(id)
+      .then((r) => { if (!cancelled) setFetched({ serverId: id, channels: r.channels }); })
+      .catch(() => { if (!cancelled) setFetched({ serverId: id, channels: [] }); });
+    return () => { cancelled = true; };
+  }, [details.server_id, servers]);
+
+  // Only show channels that belong to the currently selected server.
+  const channels = fetched.serverId === details.server_id ? fetched.channels : [];
+
+  const pickServer = (e) => {
+    const server = (servers || []).find((s) => s.id === e.target.value);
+    onChange({ ...details, server_id: server?.id || '', server_name: server?.name || '', channel_id: '', channel_name: '' });
+  };
+  const pickChannel = (e) => {
+    const channel = channels.find((c) => c.id === e.target.value);
+    onChange({ ...details, channel_id: channel?.id || '', channel_name: channel?.name || '' });
+  };
+  const handle = (e) => onChange({ ...details, [e.target.name]: e.target.value, [e.target.name === 'server_name' ? 'server_id' : 'channel_id']: '' });
+
+  if (servers === false || (Array.isArray(servers) && servers.length === 0)) {
+    return (
+      <div className="space-y-4">
+        <div className="grid grid-cols-2 gap-4">
+          <Field label="Discord server" name="server_name" value={details.server_name ?? ''} onChange={handle} placeholder="Exact server name" requiredFor="discord" />
+          <Field label="Discord channel" name="channel_name" value={details.channel_name ?? ''} onChange={handle} placeholder="announcements" requiredFor="discord" />
+        </div>
+        <p className="hint">{servers === false ? `Server list unavailable (${why}). Type the names instead.` : 'The bot is not in any server yet. Use "Add bot to a server" under Connections, or type the names.'}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid grid-cols-2 gap-4">
+      <Field label="Discord server" name="server_id" requiredFor="discord">
+        <select id="field-server_id" className="input" value={details.server_id || ''} onChange={pickServer} disabled={servers === null}>
+          <option value="">{servers === null ? 'Loading…' : 'Choose a server'}</option>
+          {(servers || []).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+        </select>
+      </Field>
+      <Field label="Discord channel" name="channel_id" requiredFor="discord">
+        <select id="field-channel_id" className="input" value={details.channel_id || ''} onChange={pickChannel} disabled={!details.server_id}>
+          <option value="">{details.server_id ? 'Choose a channel' : 'Pick a server first'}</option>
+          {channels.map((c) => <option key={c.id} value={c.id}>#{c.name}</option>)}
+        </select>
+      </Field>
+    </div>
+  );
+}
+
 export function EventForm({ details, onChange, notify }) {
   const [templates, setTemplates] = useState({ names: [], path: '' });
 
@@ -102,10 +169,7 @@ export function EventForm({ details, onChange, notify }) {
 
       <div className="space-y-6">
         <Section icon={Monitor} color="text-blue" title="Destinations">
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="Discord server" name="server_name" value={v('server_name')} onChange={handle} placeholder="Exact server name" requiredFor="discord" />
-            <Field label="Discord channel" name="channel_name" value={v('channel_name')} onChange={handle} placeholder="announcements" requiredFor="discord" />
-          </div>
+          <DiscordTargets details={details} onChange={onChange} />
           <label className="flex items-center gap-3 text-sm cursor-pointer select-none">
             <input type="checkbox" name="mention_everyone" checked={details.mention_everyone !== false} onChange={handle} className="accent-green w-4 h-4" />
             Mention @everyone in the Discord announcement

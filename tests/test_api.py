@@ -7,7 +7,9 @@ import pytest
 def test_health_and_session_open_when_no_password(client):
     assert client.get("/api/health").json()["status"] == "ok"
     s = client.get("/api/auth/session").json()
-    assert s == {"auth_required": False, "authenticated": True, "version": s["version"]}
+    assert s["auth_required"] is False and s["authenticated"] is True
+    assert s["subject"] is None
+    assert s["login_methods"] == {"password": False, "google": False}
 
 
 def test_details_roundtrip_with_coercion(client, sample_details):

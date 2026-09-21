@@ -4,23 +4,37 @@ All real work lives in the ``sawed_off`` package; this file wires it to URLs.
 
 Route map
 ---------
-GET  /api/health                 liveness check (for Docker / uptime monitors)
-GET  /api/auth/session           is a password required? am I logged in?
-POST /api/auth/login             {"password": ...} -> sets session cookie
-POST /api/auth/logout
-GET  /api/details                saved event details
-POST /api/details                save event details (validated)
-POST /api/upload                 multipart file -> stored under DATA_DIR/uploads
-GET  /api/custom-emails          names of the custom email templates
-POST /api/actions/{action}       start a background job -> {job}
-GET  /api/actions/{action}/check preflight problems without running anything
-GET  /api/jobs                   recent jobs
-GET  /api/jobs/{id}              one job (status, error, log lines)
-GET  /api/logs                   global debug log ring buffer
-GET  /api/google/status          Google login status
-GET  /api/google/login           -> {"auth_url"}  (browser navigates there)
-GET  /api/auth/callback          Google redirects here after consent
-POST /api/google/logout
+Session / who is using the app
+  GET  /api/health                 liveness check (Docker / uptime monitors)
+  GET  /api/auth/session           is a login required? who am I? which login methods exist?
+  POST /api/auth/login             {"password": ...} -> session cookie
+  GET  /api/auth/google            -> {"auth_url"} officer sign-in with their own Google account
+  GET  /api/auth/callback          Google redirects here (both club connect and officer sign-in)
+  POST /api/auth/logout
+  GET/POST/DELETE /api/operators   the officers allowed to sign in with Google
+
+Connections (the club identity)
+  GET  /api/connections            status of Google, Instagram, Discord (+ ?verify=true for live checks)
+  GET  /api/google/login           -> {"auth_url"} connect the club Google account
+  POST /api/google/logout          disconnect it
+  GET  /api/instagram/login        -> {"auth_url"} connect the club Instagram account
+  GET  /api/instagram/callback     Instagram redirects here
+  POST /api/instagram/disconnect
+  GET  /api/discord/servers        servers the bot is in
+  GET  /api/discord/servers/{id}/channels
+
+Event & actions
+  GET/POST /api/details            saved event details
+  POST /api/upload                 multipart file -> DATA_DIR/uploads
+  GET  /api/custom-emails          custom email template names
+  GET  /api/actions/{a}/check      preflight problems
+  POST /api/actions/{a}            start a background job -> {job}
+  GET  /api/jobs, /api/jobs/{id}   job status + log lines
+  GET  /api/logs                   global debug log
+
+Files
+  /uploads/*   (login required)    uploaded files
+  /public/*    (no login)          short-lived links handed to Instagram
 """
 
 from __future__ import annotations
@@ -30,14 +44,15 @@ import re
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
+from urllib.parse import quote
 
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ValidationError
 
-from sawed_off import __version__, actions, auth, config, jobs, storage
-from sawed_off.integrations import google_apis
+from sawed_off import __version__, actions, auth, config, jobs, operators, publicfiles, storage
+from sawed_off.integrations import discord_bot, google_apis, instagram_api
 from sawed_off.logbuffer import ring_handler, setup_logging
 from sawed_off.models import ACTIONS, EventDetails
 
@@ -55,7 +70,7 @@ async def lifespan(_: FastAPI):
         log.info("Migrated legacy file: %s", moved)
     log.info("Sawed-off-Socials v%s ready. Data directory: %s", __version__, config.DATA_DIR)
     if not auth.auth_required():
-        log.warning("APP_PASSWORD is not set: anyone who can reach this server can use it.")
+        log.warning("No APP_PASSWORD and no operators configured: anyone who can reach this server can use it.")
     yield
 
 
@@ -63,7 +78,19 @@ app = FastAPI(title="Sawed-off-Socials", version=__version__, lifespan=lifespan)
 app.add_middleware(auth.AuthMiddleware)
 
 
-# --- Health & auth ---------------------------------------------------------------
+def _set_session_cookie(response: JSONResponse | RedirectResponse, request: Request, subject: str) -> None:
+    response.set_cookie(
+        auth.COOKIE_NAME,
+        auth.make_session(subject),
+        max_age=auth.COOKIE_MAX_AGE,
+        httponly=True,
+        samesite="lax",
+        secure=request.url.scheme == "https",
+        path="/",
+    )
+
+
+# --- Health & session -------------------------------------------------------------
 
 @app.get("/api/health")
 async def health() -> dict:
@@ -79,6 +106,11 @@ async def session(request: Request) -> dict:
     return {
         "auth_required": auth.auth_required(),
         "authenticated": auth.is_authenticated(request),
+        "subject": auth.current_subject(request),
+        "login_methods": {
+            "password": auth.password_login_enabled(),
+            "google": google_apis.is_configured(),
+        },
         "version": __version__,
     }
 
@@ -91,17 +123,42 @@ async def login(body: LoginBody, request: Request) -> JSONResponse:
     if not auth.check_password(body.password):
         auth.record_failure(client_ip)
         raise HTTPException(status_code=401, detail="Wrong password")
-    response = JSONResponse({"status": "ok"})
-    response.set_cookie(
-        auth.COOKIE_NAME,
-        auth.session_token(),
-        max_age=auth.COOKIE_MAX_AGE,
-        httponly=True,
-        samesite="lax",
-        secure=request.url.scheme == "https",
-        path="/",
-    )
+    response = JSONResponse({"status": "ok", "subject": auth.PASSWORD_SUBJECT})
+    _set_session_cookie(response, request, auth.PASSWORD_SUBJECT)
     return response
+
+
+@app.get("/api/auth/google")
+async def google_operator_login() -> dict:
+    """Officer sign-in: only asks Google for the email, stores nothing."""
+    try:
+        return {"auth_url": google_apis.authorization_url("operator")}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/auth/callback")
+async def google_callback(
+    request: Request, code: str | None = None, state: str | None = None, error: str | None = None
+):
+    if error or not code:
+        log.warning("[Google] OAuth cancelled or failed: %s", error or "no code")
+        return RedirectResponse(url=f"/?google=error&reason={quote(error or 'no_code')}")
+    try:
+        result = google_apis.handle_callback(code, state)
+    except Exception as exc:  # noqa: BLE001
+        log.error("[Google] OAuth failed: %s", exc)
+        return RedirectResponse(url="/?google=error&reason=exchange_failed")
+
+    email = result["email"]
+    if result["purpose"] == "operator":
+        if not operators.is_operator(email):
+            log.warning("[Google] Sign-in refused: %s is not an operator", email)
+            return RedirectResponse(url=f"/?login=denied&email={quote(email)}")
+        response = RedirectResponse(url=f"/?login=ok&email={quote(email)}")
+        _set_session_cookie(response, request, email.lower())
+        return response
+    return RedirectResponse(url=f"/?google=ok&email={quote(email)}")
 
 
 @app.post("/api/auth/logout")
@@ -109,6 +166,112 @@ async def logout() -> JSONResponse:
     response = JSONResponse({"status": "ok"})
     response.delete_cookie(auth.COOKIE_NAME, path="/")
     return response
+
+
+class OperatorBody(BaseModel):
+    email: str
+
+
+@app.get("/api/operators")
+async def list_operators() -> dict:
+    return {"operators": operators.load(), "club_email": operators.club_email()}
+
+
+@app.post("/api/operators")
+async def add_operator(body: OperatorBody) -> dict:
+    try:
+        return {"operators": operators.add(body.email)}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.delete("/api/operators/{email}")
+async def remove_operator(email: str, request: Request) -> dict:
+    remaining = operators.remove(email)
+    if auth.current_subject(request) == email.lower():
+        log.info("Operator %s removed themselves", email)
+    return {"operators": remaining}
+
+
+# --- Connections ------------------------------------------------------------------
+
+@app.get("/api/connections")
+async def connections(verify: bool = False) -> dict:
+    return {
+        "google": google_apis.connection_status(verify=verify),
+        "instagram": instagram_api.connection_status(verify=verify),
+        "discord": discord_bot.connection_status(verify=verify),
+        "public_url": config.public_base_url(),
+        "operators": operators.load(),
+        "club_email": operators.club_email(),
+    }
+
+
+@app.get("/api/google/login")
+async def google_club_login() -> dict:
+    try:
+        return {"auth_url": google_apis.authorization_url("club")}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/google/logout")
+async def google_logout() -> dict:
+    google_apis.logout()
+    return {"status": "ok"}
+
+
+@app.get("/api/google/status")
+async def google_status() -> dict:  # kept for older UI builds
+    return google_apis.auth_status()
+
+
+@app.get("/api/instagram/login")
+async def instagram_login() -> dict:
+    try:
+        return {"auth_url": instagram_api.authorization_url()}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/instagram/callback")
+async def instagram_callback(
+    code: str | None = None, state: str | None = None,
+    error: str | None = None, error_description: str | None = None,
+):
+    if error or not code:
+        log.warning("[Instagram] OAuth cancelled or failed: %s %s", error or "no code", error_description or "")
+        return RedirectResponse(url=f"/?instagram=error&reason={quote(error or 'no_code')}")
+    try:
+        status = instagram_api.handle_callback(code, state)
+    except Exception as exc:  # noqa: BLE001
+        log.error("[Instagram] OAuth failed: %s", exc)
+        return RedirectResponse(url="/?instagram=error&reason=exchange_failed")
+    return RedirectResponse(url=f"/?instagram=ok&username={quote(status.get('username') or '')}")
+
+
+@app.post("/api/instagram/disconnect")
+async def instagram_disconnect() -> dict:
+    instagram_api.disconnect()
+    return {"status": "ok"}
+
+
+@app.get("/api/discord/servers")
+async def discord_servers() -> dict:
+    try:
+        return {"servers": discord_bot.list_guilds()}
+    except (ValueError, RuntimeError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/discord/servers/{server_id}/channels")
+async def discord_channels(server_id: str) -> dict:
+    if not server_id.isdigit():
+        raise HTTPException(status_code=400, detail="Invalid server id")
+    try:
+        return {"channels": discord_bot.list_text_channels(server_id)}
+    except (ValueError, RuntimeError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 # --- Event details ------------------------------------------------------------------
@@ -132,8 +295,7 @@ def _format_validation_error(exc: ValidationError) -> str:
     parts = []
     for err in exc.errors():
         field = ".".join(str(p) for p in err.get("loc", ())) or "details"
-        msg = err.get("msg", "invalid")
-        msg = re.sub(r"^Value error, ", "", msg)
+        msg = re.sub(r"^Value error, ", "", err.get("msg", "invalid"))
         parts.append(f"{field}: {msg}")
     return "; ".join(parts)
 
@@ -202,14 +364,15 @@ async def check_action(action: str) -> dict:
 
 
 @app.post("/api/actions/{action}", status_code=202)
-async def start_action(action: str) -> dict:
+async def start_action(action: str, request: Request) -> dict:
     _require_action(action)
     details = storage.load_details()
     problems = actions.preflight(action, details)
     if problems:
         raise HTTPException(status_code=400, detail={"message": "Cannot run yet", "problems": problems})
+    started_by = auth.current_subject(request) or ("open-access" if not auth.auth_required() else None)
     try:
-        job = jobs.manager.start(action, lambda: actions.run_action(action, details))
+        job = jobs.manager.start(action, lambda: actions.run_action(action, details), started_by=started_by)
     except jobs.JobAlreadyRunning as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     return {"job": job.to_dict()}
@@ -233,41 +396,15 @@ async def get_logs() -> dict:
     return {"logs": ring_handler.get_lines()}
 
 
-# --- Google OAuth -------------------------------------------------------------
+# --- Files ---------------------------------------------------------------------------
 
-@app.get("/api/google/status")
-async def google_status() -> dict:
-    return google_apis.auth_status()
+@app.get("/public/{token}", include_in_schema=False)
+async def public_file(token: str):
+    path = publicfiles.resolve(token)
+    if path is None or not path.is_file():
+        raise HTTPException(status_code=404, detail="Not found")
+    return FileResponse(path)
 
-
-@app.get("/api/google/login")
-async def google_login() -> dict:
-    try:
-        return {"auth_url": google_apis.authorization_url()}
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-
-@app.get("/api/auth/callback")
-async def google_callback(code: str | None = None, state: str | None = None, error: str | None = None):
-    if error or not code:
-        log.warning("[Google] Login cancelled or failed: %s", error or "no code")
-        return RedirectResponse(url=f"/?google=error&reason={error or 'no_code'}")
-    try:
-        email = google_apis.handle_callback(code, state)
-    except Exception as exc:  # noqa: BLE001
-        log.error("[Google] Login failed: %s", exc)
-        return RedirectResponse(url="/?google=error&reason=exchange_failed")
-    return RedirectResponse(url=f"/?google=ok&email={email}")
-
-
-@app.post("/api/google/logout")
-async def google_logout() -> dict:
-    google_apis.logout()
-    return {"status": "ok"}
-
-
-# --- Static frontend ------------------------------------------------------------
 
 config.ensure_data_dirs()
 app.mount("/uploads", StaticFiles(directory=str(config.UPLOAD_DIR)), name="uploads")

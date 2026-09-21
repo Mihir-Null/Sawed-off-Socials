@@ -62,6 +62,8 @@ class EventDetails(BaseModel):
     image: str = ""
     server_name: str = ""
     channel_name: str = ""
+    server_id: str = ""   # Discord snowflake ids, set by the dropdowns; names stay
+    channel_id: str = ""  # for display and as a fallback when ids are absent
     meeting_link: str = ""
     event_date: str = ""  # YYYY-MM-DD
     event_time: str = ""  # HH:MM (24h)
@@ -79,7 +81,7 @@ class EventDetails(BaseModel):
 
     @field_validator(
         "event_name", "description", "image", "server_name", "channel_name",
-        "meeting_link", "event_date", "event_time", "calendar_name", "csv_file",
+        "server_id", "channel_id", "meeting_link", "event_date", "event_time", "calendar_name", "csv_file",
         "email_column", "club_name", "custom_emails", "more_info_link",
         mode="before",
     )

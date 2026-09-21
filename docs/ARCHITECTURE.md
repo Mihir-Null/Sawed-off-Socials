@@ -72,15 +72,49 @@ Everything the app remembers lives in **one directory**, `DATA_DIR`
 
 On first start, files from the old layout (repo root) are copied in.
 
-## Authentication
+## Identity: one club, many officers
 
-Set `APP_PASSWORD` and every `/api/*` and `/uploads/*` request needs a session
-cookie (`sawed_off/auth.py`). The cookie is an HMAC over a server secret, so it
-cannot be guessed; it is `HttpOnly` and `SameSite=Lax`. Without a password the
-app is open and the UI shows a warning banner.
+Two separate questions, answered by two separate mechanisms:
 
-The Google OAuth flow uses a random `state` value that the callback verifies,
-which stops another site from tricking the app into storing a token it chose.
+**Which accounts does the app post as?** The *club identity*: one Google
+account, one Instagram account, one Discord bot. Each is connected once from
+the Connections panel and stored under `DATA_DIR` (`google_token.json`,
+`instagram_token.json`; the bot token is in `.env` because Discord has no
+user login for bots). The integrations refresh these tokens themselves:
+Google via its refresh token, Instagram by calling `refresh_access_token`
+when the 60-day token is more than a day old and within 20 days of expiry.
+
+**Who may press the buttons?** *Operators* (`sawed_off/operators.py`), i.e.
+officers. They sign in with the shared `APP_PASSWORD` or with their own
+Google account, if their email is in `operators.json` or is the connected
+club account. Both produce the same session cookie (`sawed_off/auth.py`): a
+base64 payload naming the subject plus an HMAC over a server secret, so it
+cannot be forged. The subject is re-validated on every request, so removing
+an officer logs them out at once. Every job records `started_by`.
+
+Google serves both purposes with one OAuth client. `authorization_url("club")`
+asks for Calendar and Gmail scopes and stores the token; `"operator"` asks
+only for the email and stores nothing. The `state` value remembers which
+purpose a callback belongs to, and doubles as CSRF protection: a callback
+whose state we did not issue is rejected.
+
+### App credentials vs account logins
+
+Every OAuth-style connector has two layers. *App credentials* (client id and
+secret, bot token) identify the software to the platform; hosted products
+hide them because the vendor registers one app for everyone. A self-hosted
+tool cannot, because the redirect URI is tied to the deployment's domain, so
+the host registers once per platform and puts the result in `.env`.
+*Account logins* are what officers do in the UI. The README is organised
+around this split.
+
+### Public image links
+
+Instagram fetches images by URL. `sawed_off/publicfiles.py` hands out
+one-hour random links under `/public/` for uploaded files when the app is on
+an `https://` public URL, which makes Cloudinary optional. The route is
+deliberately outside the login wall (Meta's servers are the client) but
+nothing is listable and links expire.
 
 ## Integrations
 
@@ -96,7 +130,11 @@ discord_bot.run_post_event(load_details())
 
 Noteworthy details:
 
-- **Discord** – discord.py swallows exceptions raised inside `on_ready`, so
+- **Discord** – the Connections panel and the form's dropdowns use Discord's
+  REST API with the bot token (no websocket): application info for the
+  invite link, the bot's guilds, and each guild's text channels. Posting
+  prefers the chosen ids and falls back to names.
+  discord.py swallows exceptions raised inside `on_ready`, so
   the old code reported success even when the post failed. The outcome is now
   captured and re-raised after the client closes. Only default intents are
   used (the privileged `message_content` intent is unnecessary and, if not
