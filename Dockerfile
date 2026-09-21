@@ -1,31 +1,32 @@
-# Build Stage: React Frontend
-FROM node:20-slim AS frontend-build
+# ---- Stage 1: build the React frontend -------------------------------------
+FROM node:22-slim AS frontend-build
 WORKDIR /app/frontend
-COPY frontend/package*.json ./
-RUN npm install
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci --no-audit --no-fund
 COPY frontend/ ./
-# Fix potential permission issues with binaries
-RUN chmod +x node_modules/.bin/*
 RUN npm run build
-# Runtime Stage: Python Backend
+
+# ---- Stage 2: Python runtime --------------------------------------------------
 FROM python:3.11-slim
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    SOS_DATA_DIR=/data \
+    SOS_PORT=8000
 WORKDIR /app
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    && rm -rf /var/lib/apt/lists/*
-# Install Python dependencies
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-RUN pip install --no-cache-dir fastapi uvicorn python-multipart
-# Copy built frontend assets
-COPY --from=frontend-build /app/frontend/dist ./frontend/dist
-# Copy backend and automation scripts
+
 COPY backend/ ./backend/
-COPY Jack_Discord.py Jack_Google.py Jack_Insta.py ./
-# Create uploads directory
-RUN mkdir -p uploads
-# Expose the API port
+COPY sawed_off/ ./sawed_off/
+COPY find_insta_id.py custom_emails.example.json ./
+COPY --from=frontend-build /app/frontend/dist ./frontend/dist
+
+# All persistent state (uploads, saved event, Google token, templates) lives here.
+VOLUME ["/data"]
 EXPOSE 8000
-# Start the application
-CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
+  CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3).status == 200 else 1)"
+
+CMD ["sh", "-c", "uvicorn backend.main:app --host 0.0.0.0 --port ${SOS_PORT} --proxy-headers --forwarded-allow-ips='*'"]

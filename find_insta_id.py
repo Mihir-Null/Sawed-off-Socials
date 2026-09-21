@@ -46,7 +46,7 @@ def find_instagram_ids():
             if insta_acc:
                 insta_id = insta_acc.get("id")
                 print(f"  └─ ✨ Linked Instagram Business Account ID: {insta_id}")
-                print(f"     👉 Use this for INSTAGRAM_USER_ID in your .env file.")
+                print("     👉 Use this for INSTAGRAM_USER_ID in your .env file.")
                 found_any = True
             else:
                 print("  └─ ❌ No linked Instagram Business Account found for this Page.")

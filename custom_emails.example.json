@@ -1,0 +1,12 @@
+{
+    "room_booking": {
+        "email": "rooms@example.edu",
+        "subject": "Room request: {club_name} - {event_name} on {event_date}",
+        "body": "Hello,\n\n{club_name} would like to book a room for \"{event_name}\" on {event_date_long} starting at {event_time_12h} for {event_duration} hour(s).\n\nExpected attendance: 30.\n\nThank you,\n{club_name}"
+    },
+    "newsletter": {
+        "email": "newsletter@example.edu",
+        "subject": "Please include: {event_name}",
+        "body": "Hi,\n\nCould you include the following in this week's newsletter?\n\n{event_name}\n{description}\n\nWhen: {event_date_long}, {event_time_12h}\nWhere: {meeting_link}\nMore info: {more_info_link}\n\nThanks,\n{club_name}"
+    }
+}
