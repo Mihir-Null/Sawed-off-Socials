@@ -1,21 +1,26 @@
-# Node
+# Keep the image small and free of secrets/local state
+.git
+.gitignore
+.env
+data
+uploads
+*.csv
+token.json
+google_token.json
+event_details.json
+custom_emails.json
 frontend/node_modules
 frontend/dist
 frontend/.vite
-npm-debug.log
-# Python
-__pycache__/
+__pycache__
 *.py[cod]
-*$py.class
-venv/
-.env
-# Docker
-Dockerfile
-docker-compose.yml
-.dockerignore
-# Git
-.git
-.gitignore
-# OS
-.DS_Store
-Thumbs.db
+venv
+.venv
+.pytest_cache
+tests
+*.bin
+*.dist
+AdminJack
+docs
+*.md
+!README.md
