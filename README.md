@@ -50,25 +50,41 @@ Data lives in `./data` next to the code. Set `SOS_DATA_DIR` to move it.
 
 Set `APP_PASSWORD` in `.env` before putting the app on the internet. Without
 it anyone who finds the address can post as your club (the UI shows a warning
-banner). With it, the UI asks for the password once per browser. Put it
-behind HTTPS (a reverse proxy such as Caddy or Cloudflare Tunnel is enough).
+banner). Officers can additionally sign in with their own Google account once
+an existing officer adds their email under **Connections → Officers**. Put the
+app behind HTTPS (a reverse proxy such as Caddy or Cloudflare Tunnel is enough).
 
 ---
 
 ## Using the app
 
-1. **Sign in with Google** (top right) if you want Calendar or Email.
+1. Open **Connections** (top right) and connect the club's accounts once:
+   **Google** (Calendar + Gmail), **Instagram**, and add the Discord bot to
+   your server. The app keeps these logins alive; when one does need
+   attention the panel says so and offers **Reconnect**.
 2. Fill in the **Event**, **When**, **Destinations** and **Files** cards.
-   The small grey tag next to a label says which action needs it.
+   The small grey tag next to a label says which action needs it. Discord
+   server and channel are dropdowns of what the bot can see.
 3. Under **Send it**, each button shows *ready* or *Missing: …* so you know
    what is left before you press anything. Buttons that send email or post
    publicly ask for confirmation.
 4. A status card appears at the top with live progress, links to what was
-   created, and a plain-English error if something failed. The **Logs** button
-   shows the full server log.
+   created, who started it, and a plain-English error if something failed.
+   The **Logs** button shows the full server log.
 
 **Run everything** does all five actions in order. Steps that are not filled
 in (for example no CSV) are reported and the rest still run.
+
+### One club identity, many officers
+
+Everything is posted *as the club*: the club Gmail, the club Instagram, the
+club's bot. Who may press the buttons is separate:
+
+- the shared `APP_PASSWORD`, or
+- **Sign in with Google** as an officer whose email is listed under
+  Connections → Officers. The Google account connected as the club is always
+  allowed. Removing an officer signs them out immediately, and every job
+  records who started it.
 
 ### The actions
 
@@ -121,29 +137,29 @@ Unknown placeholders are left as-is rather than crashing.
 
 ---
 
-## Credentials
+## Setting up the platforms
 
-All secrets go in `.env` (never commit it). Only the services you use need
-values; the UI tells you which variable is missing for each action.
+Two kinds of secrets are involved, and keeping them apart makes setup much
+less confusing:
 
-### Discord
+| | What it is | Where it goes | Who does it |
+| --- | --- | --- | --- |
+| **App credentials** | A client id/secret (or bot token) that identifies *this installation* to Google, Meta or Discord | `.env` | whoever hosts the app, once |
+| **Account logins** | Which club Gmail / Instagram account the app posts as | the **Connections** panel | any officer, once, or when the panel says "Reconnect" |
 
-1. [Discord Developer Portal](https://discord.com/developers/applications) →
-   **New Application** → **Bot** → **Reset Token**, copy it to
-   `DISCORD_BOT_TOKEN`. No privileged intents are required.
-2. **OAuth2 → URL Generator**: scope `bot`; permissions *View Channels*,
-   *Send Messages*, *Embed Links*, *Attach Files*, *Mention Everyone*,
-   *Manage Events*. Open the generated URL and add the bot to your server.
-3. Make sure the bot can see the announcement channel.
+Only the services you use need setting up; each action's button tells you
+what is missing.
 
 ### Google (Calendar + Gmail)
+
+*App credentials, once:*
 
 1. [Google Cloud Console](https://console.cloud.google.com/) → create a
    project → **APIs & Services → Library**: enable **Google Calendar API** and
    **Gmail API**.
-2. **OAuth consent screen**: External, add yourself (the club account) as a
-   test user. Scopes: `.../auth/calendar`, `.../auth/gmail.send`,
-   `.../auth/userinfo.email`.
+2. **OAuth consent screen**: External. Add the club Google account *and every
+   officer who will sign in with Google* as test users. Scopes:
+   `.../auth/calendar`, `.../auth/gmail.send`, `.../auth/userinfo.email`.
 3. **Credentials → Create credentials → OAuth client ID → Web application**.
    Add an *Authorized redirect URI*:
    - local: `http://localhost:8000/api/auth/callback`
@@ -151,35 +167,64 @@ values; the UI tells you which variable is missing for each action.
 4. Put the client id/secret in `.env` as `GOOGLE_CLIENT_ID`,
    `GOOGLE_CLIENT_SECRET`, `GOOGLE_PROJECT_ID`, and set
    `GOOGLE_REDIRECT_URI` to the exact URI from step 3.
-5. In the app click **Sign in with Google**. The token is stored in
-   `data/google_token.json`. Use the small sign-out icon to switch accounts.
+
+*Account login, in the UI:* Connections → Google → **Connect**, and sign in
+as the club account. The token lives in `data/google_token.json`.
+
+> While the consent screen is in **Testing** status Google expires the login
+> every 7 days. To stop the weekly reconnect either publish the app, or, if
+> the club account is in a Google Workspace organisation (most universities),
+> create the Cloud project there and choose **Internal**.
 
 Gmail limits free accounts to about 500 sends per day; Workspace accounts to
 2000.
 
-### Instagram (+ Cloudinary)
+### Instagram
 
-Instagram's API only accepts images by public URL, so local uploads are sent
-to Cloudinary first.
+*App credentials, once:*
 
-1. Your Instagram account must be **Business or Creator** and linked to a
-   **Facebook Page**.
-2. [Meta for Developers](https://developers.facebook.com/) → create a
-   *Business* app → add **Instagram Graph API**.
-3. [Graph API Explorer](https://developers.facebook.com/tools/explorer/):
-   select the app, add permissions `instagram_basic`,
-   `instagram_content_publish`, `pages_show_list`, `pages_read_engagement`,
-   click **Generate Access Token** and *select the Page and Instagram account*
-   in the popup. Copy it to `INSTAGRAM_ACCESS_TOKEN`.
-   (Short-lived tokens expire in an hour; exchange for a long-lived token in
-   the Explorer's token tool for 60 days.)
-4. Run `python find_insta_id.py` to print your Instagram Business Account ID;
-   copy it to `INSTAGRAM_USER_ID`.
-5. [Cloudinary](https://cloudinary.com/users/register/free): copy *Cloud
-   name*, *API key* and *API secret* from the dashboard into the
-   `CLOUDINARY_*` variables.
+1. Your Instagram account must be **Business or Creator**.
+2. [Meta for Developers](https://developers.facebook.com/) → **Create app** →
+   choose the **Business** type → add the **Instagram** product → **API setup
+   with Instagram login**.
+3. Under *Business login settings* add the redirect URI
+   `https://your-domain/api/instagram/callback` (or the localhost equivalent),
+   and under *App roles → Roles* add the club Instagram account as an
+   **Instagram Tester** (accept the invite from the Instagram app under
+   Settings → Website permissions → Apps and websites → Tester invites).
+4. Copy the *Instagram app ID* and *app secret* into `.env` as
+   `INSTAGRAM_APP_ID` and `INSTAGRAM_APP_SECRET`.
 
----
+*Account login, in the UI:* Connections → Instagram → **Connect**, log in as
+the club account and approve. The app exchanges the login for a 60-day token
+and renews it automatically whenever it posts, so nobody has to touch the Meta
+console again.
+
+*Images:* Instagram fetches the image from a public URL. If the app is hosted
+at an `https://` address (`SOS_PUBLIC_URL`) it serves the image itself. On a
+laptop, or behind plain http, add the `CLOUDINARY_*` variables instead
+([free account](https://cloudinary.com/users/register/free)).
+
+*Legacy:* a manually generated Facebook Graph API token still works via
+`INSTAGRAM_ACCESS_TOKEN` + `INSTAGRAM_USER_ID` (`python find_insta_id.py`
+prints the id).
+
+### Discord
+
+Discord bots have no "log in" flow: the bot *is* the club's identity, and the
+token identifies it.
+
+*App credentials, once:*
+
+1. [Discord Developer Portal](https://discord.com/developers/applications) →
+   **New Application** → **Bot** → **Reset Token**, copy it to
+   `DISCORD_BOT_TOKEN`. No privileged intents are required.
+
+*Adding it to a server, in the UI:* Connections → Discord → **Add bot to a
+server**. That opens Discord's own authorisation page with the right
+permissions (view channels, send messages, embed links, attach files, mention
+everyone, manage events) pre-selected. Afterwards the server and channel
+appear in the dropdowns on the form.
 
 ## Hosting notes
 
@@ -191,6 +236,8 @@ to Cloudinary first.
   image has a built-in health check.
 - Set `SOS_SECRET_KEY` to any long random string if you do not want everyone
   to be logged out when the container restarts.
+- `SOS_PUBLIC_URL` should be the address people use in their browser. It
+  feeds the OAuth redirect URLs and the self-hosted image links.
 - Logs go to stderr (`docker logs`) and to the in-app Logs panel.
 
 ## Development
@@ -208,7 +255,13 @@ destination. In short: the text of each post lives in
 `sawed_off/integrations/<service>.py`; the form fields live in
 `sawed_off/models.py` and `frontend/src/components/EventForm.jsx`.
 
-## Upgrading from 1.x
+## Upgrading
+
+**From 2.0:** nothing to do. To stop using a manual Instagram token, set
+`INSTAGRAM_APP_ID` / `INSTAGRAM_APP_SECRET` and press Connect; the `.env`
+token is only used when no connection exists.
+
+**From 1.x:**
 
 - Persistent files moved into `data/`. On first start the app copies
   `event_details.json`, `custom_emails.json`, `token.json` and `uploads/` from

@@ -10,6 +10,11 @@ Design notes
   store the outcome in ``outcome`` and re-raise after the client closes.
 * Only default intents are needed.  ``message_content`` is a *privileged*
   intent: if it is not enabled in the developer portal, login fails.
+* The Connections panel uses Discord's plain REST API (``_rest``) with the
+  bot token: no websocket needed to list the servers the bot is in, their
+  channels, or to build the "Add to server" invite link.  Discord bots have
+  no user-login flow; the bot token is the app's identity, set once by the
+  host, and officers *add the bot to a server* instead of typing credentials.
 """
 
 from __future__ import annotations
@@ -18,22 +23,96 @@ import asyncio
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 import discord
+import requests
 
 from ..config import env
 from ..models import EventDetails
 
 log = logging.getLogger(__name__)
 
+REST_API = "https://discord.com/api/v10"
+REST_TIMEOUT = 15
+# View Channels, Send Messages, Embed Links, Attach Files, Mention Everyone, Manage Events
+INVITE_PERMISSIONS = 1024 | 2048 | 16384 | 32768 | 131072 | 8589934592
+TEXT_CHANNEL_TYPES = {0, 5}  # GUILD_TEXT, GUILD_ANNOUNCEMENT
+
 CONNECT_TIMEOUT_SECONDS = 120
 MAX_EVENT_DESCRIPTION = 1000   # Discord limit for scheduled event descriptions
 MAX_MESSAGE_LENGTH = 2000      # Discord limit for a single message
 
 
+def configured() -> bool:
+    return bool(env("DISCORD_BOT_TOKEN"))
+
+
+def _rest(path: str) -> Any:
+    token = env("DISCORD_BOT_TOKEN")
+    if not token:
+        raise ValueError("DISCORD_BOT_TOKEN is not set in .env")
+    try:
+        response = requests.get(
+            f"{REST_API}{path}", headers={"Authorization": f"Bot {token}"}, timeout=REST_TIMEOUT
+        )
+    except requests.RequestException as exc:
+        # urllib3 error strings are several lines long; keep the useful part.
+        reason = str(exc).split("(Caused by")[0].strip().rstrip(":") or exc.__class__.__name__
+        raise RuntimeError(f"Could not reach Discord: {reason[:160]}") from exc
+    if response.status_code == 401:
+        raise ValueError("Discord rejected the bot token. Check DISCORD_BOT_TOKEN.")
+    if not response.ok:
+        raise RuntimeError(f"Discord API error {response.status_code}: {response.text[:200]}")
+    return response.json()
+
+
+def application_info() -> dict[str, Any]:
+    data = _rest("/oauth2/applications/@me")
+    return {"id": str(data.get("id")), "name": data.get("name"), "bot": (data.get("bot") or {}).get("username")}
+
+
+def invite_url(application_id: str) -> str:
+    return (
+        "https://discord.com/oauth2/authorize"
+        f"?client_id={application_id}&scope=bot&permissions={INVITE_PERMISSIONS}"
+    )
+
+
+def list_guilds() -> list[dict[str, str]]:
+    return [{"id": str(g["id"]), "name": g["name"]} for g in _rest("/users/@me/guilds")]
+
+
+def list_text_channels(guild_id: str) -> list[dict[str, str]]:
+    channels = [c for c in _rest(f"/guilds/{guild_id}/channels") if c.get("type") in TEXT_CHANNEL_TYPES]
+    channels.sort(key=lambda c: (c.get("position", 0), c.get("name", "")))
+    return [{"id": str(c["id"]), "name": c["name"]} for c in channels]
+
+
+def connection_status(verify: bool = False) -> dict[str, Any]:
+    status: dict[str, Any] = {
+        "app_configured": configured(), "connected": False, "bot_name": None,
+        "invite_url": None, "guilds": [], "ok": False, "error": None,
+    }
+    if not configured():
+        return status
+    if not verify:
+        status.update({"connected": True, "ok": True})
+        return status
+    try:
+        info = application_info()
+        status.update({
+            "connected": True, "ok": True, "bot_name": info["bot"] or info["name"],
+            "invite_url": invite_url(info["id"]), "guilds": list_guilds(),
+        })
+    except Exception as exc:  # noqa: BLE001
+        status["error"] = str(exc)
+    return status
+
+
 def preflight(details: EventDetails) -> list[str]:
     problems: list[str] = []
-    if not env("DISCORD_BOT_TOKEN"):
+    if not configured():
         problems.append("DISCORD_BOT_TOKEN is not set in .env")
     try:
         if details.start_datetime() <= datetime.now(timezone.utc):
@@ -64,20 +143,39 @@ def build_announcement(details: EventDetails) -> str:
     return _truncate("\n".join(lines), MAX_MESSAGE_LENGTH)
 
 
-async def _post(details: EventDetails, client: discord.Client) -> dict:
+def _find_guild(client: discord.Client, details: EventDetails) -> discord.Guild:
+    # Prefer the id chosen from the dropdown; names can change or repeat.
+    if details.server_id and details.server_id.isdigit():
+        guild = client.get_guild(int(details.server_id))
+        if guild is not None:
+            return guild
     guild = discord.utils.get(client.guilds, name=details.server_name)
     if guild is None:
         names = ", ".join(g.name for g in client.guilds) or "(none)"
         raise ValueError(
-            f"Bot is not in a server named '{details.server_name}'. It is in: {names}"
+            f"Bot is not in a server named '{details.server_name}'. It is in: {names}. "
+            "Use 'Add to server' in the Connections panel."
         )
+    return guild
 
+
+def _find_channel(guild: discord.Guild, details: EventDetails) -> discord.TextChannel:
+    if details.channel_id and details.channel_id.isdigit():
+        channel = guild.get_channel(int(details.channel_id))
+        if isinstance(channel, discord.TextChannel):
+            return channel
     channel = discord.utils.get(guild.text_channels, name=details.channel_name)
     if channel is None:
         names = ", ".join(c.name for c in guild.text_channels)
         raise ValueError(
             f"No text channel '{details.channel_name}' in '{guild.name}'. Channels: {names}"
         )
+    return channel
+
+
+async def _post(details: EventDetails, client: discord.Client) -> dict:
+    guild = _find_guild(client, details)
+    channel = _find_channel(guild, details)
 
     start, end = details.start_datetime(), details.end_datetime()
     log.info("[Discord] Creating scheduled event '%s' (%s -> %s)", details.event_name, start, end)

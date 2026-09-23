@@ -50,3 +50,37 @@ def test_build_event_email(sample_details):
     assert "Wednesday, March 04, 2099" in body
     assert "6:00 PM EST" in body
     assert "https://linktr.ee/x" in body
+
+
+def test_oauth_callback_reuses_pkce_verifier(data_dir, monkeypatch):
+    """The consent URL carries a PKCE challenge; the callback must present the
+    matching verifier even though it builds a new Flow object."""
+    from sawed_off.integrations import google_apis as g
+
+    monkeypatch.setenv("GOOGLE_CLIENT_ID", "cid")
+    monkeypatch.setenv("GOOGLE_CLIENT_SECRET", "sec")
+    url = g.authorization_url("operator")
+    assert "code_challenge=" in url
+    state = url.split("state=")[1].split("&")[0]
+    stored_verifier = g._pending_states[state][2]
+    assert stored_verifier
+
+    seen = {}
+
+    def fake_fetch_token(self, **kwargs):
+        seen["verifier"] = self.code_verifier
+        seen["code"] = kwargs["code"]
+
+    class FakeCreds:
+        def to_json(self):
+            return "{}"
+
+    monkeypatch.setattr(g.Flow, "fetch_token", fake_fetch_token)
+    monkeypatch.setattr(g.Flow, "credentials", property(lambda self: FakeCreds()))
+    monkeypatch.setattr(g, "_fetch_email", lambda creds: "officer@club.edu")
+
+    result = g.handle_callback("the-code", state)
+    assert result == {"purpose": "operator", "email": "officer@club.edu"}
+    assert seen == {"verifier": stored_verifier, "code": "the-code"}
+    assert state not in g._pending_states  # single use
+    assert not g.config.GOOGLE_TOKEN_FILE.exists()  # operator sign-in stores nothing

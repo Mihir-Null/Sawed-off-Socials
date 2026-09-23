@@ -1,13 +1,19 @@
 """Google: OAuth login, Calendar events and Gmail sending.
 
-OAuth flow (web-app style):
-  1. ``authorization_url()`` builds the consent URL and remembers a random
-     ``state`` so the callback can verify it came from us (CSRF protection).
-  2. Google redirects to ``/api/auth/callback?code=...&state=...``;
-     ``handle_callback`` exchanges the code for tokens and stores them in
-     ``DATA_DIR/google_token.json`` together with the account email.
-  3. ``get_credentials()`` loads/refreshes the token for API calls and writes
-     the refreshed token back so we do not refresh on every single call.
+Two OAuth flows share one Google client:
+
+* purpose ``"club"``   - connect the club account whose Calendar and Gmail
+  the app posts with.  Asks for calendar + gmail.send scopes and stores the
+  refresh token in ``DATA_DIR/google_token.json``.
+* purpose ``"operator"`` - an officer signing *in to the app* with their own
+  Google account.  Asks only for their email; nothing is stored.  The caller
+  checks the email against the operators list.
+
+Both: ``authorization_url(purpose)`` remembers a random ``state`` so the
+callback can verify the redirect came from us (CSRF protection), and
+``handle_callback`` exchanges the code and returns the account email.
+``get_credentials()`` loads/refreshes the club token for API calls and writes
+the refreshed token back so we do not refresh on every single call.
 """
 
 from __future__ import annotations
@@ -16,6 +22,7 @@ import base64
 import csv
 import json
 import logging
+import os
 import secrets
 import string
 import time
@@ -42,10 +49,19 @@ SCOPES = [
     "https://www.googleapis.com/auth/userinfo.email",
     "openid",
 ]
+OPERATOR_SCOPES = ["https://www.googleapis.com/auth/userinfo.email", "openid"]
+PURPOSES = ("club", "operator")
 
-# Outstanding OAuth ``state`` values -> time issued. Single-process app, so a
-# dict is enough; entries expire after 10 minutes.
-_pending_states: dict[str, float] = {}
+# Google may return *more* scopes than requested (previously granted ones);
+# without this the oauthlib client raises "Scope has changed" on callback.
+os.environ.setdefault("OAUTHLIB_RELAX_TOKEN_SCOPE", "1")
+
+# Outstanding OAuth ``state`` values -> (time issued, purpose, PKCE verifier).
+# Single-process app, so a dict is enough; entries expire after 10 minutes.
+# The PKCE code verifier is generated when the consent URL is built and must
+# be presented again when the code is exchanged; since the callback builds a
+# fresh Flow object we have to carry it across ourselves.
+_pending_states: dict[str, tuple[float, str, str | None]] = {}
 STATE_TTL_SECONDS = 600
 
 
@@ -83,47 +99,71 @@ def preflight(details: EventDetails) -> list[str]:  # noqa: ARG001 - signature s
 
 # --- OAuth -------------------------------------------------------------------
 
-def _flow() -> Flow:
+def _flow(purpose: str) -> Flow:
     if not is_configured():
         raise ValueError("GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET are not set in .env")
-    flow = Flow.from_client_config(client_config(), scopes=SCOPES)
+    scopes = SCOPES if purpose == "club" else OPERATOR_SCOPES
+    flow = Flow.from_client_config(client_config(), scopes=scopes)
     flow.redirect_uri = redirect_uri()
     return flow
 
 
-def authorization_url() -> str:
+def authorization_url(purpose: str = "club") -> str:
+    if purpose not in PURPOSES:
+        raise ValueError(f"Unknown OAuth purpose '{purpose}'")
     now = time.time()
-    for state, issued in list(_pending_states.items()):
+    for state, (issued, *_rest) in list(_pending_states.items()):
         if now - issued > STATE_TTL_SECONDS:
             _pending_states.pop(state, None)
     state = secrets.token_urlsafe(24)
-    _pending_states[state] = now
-    url, _ = _flow().authorization_url(
-        access_type="offline", prompt="consent", include_granted_scopes="true", state=state
-    )
+    flow = _flow(purpose)
+    if purpose == "club":
+        # offline + consent: we need a refresh token, and Google only issues
+        # one on a consent screen.
+        url, _ = flow.authorization_url(
+            access_type="offline", prompt="consent", include_granted_scopes="true", state=state
+        )
+    else:
+        url, _ = flow.authorization_url(prompt="select_account", state=state)
+    _pending_states[state] = (now, purpose, getattr(flow, "code_verifier", None))
     return url
 
 
-def handle_callback(code: str, state: str | None) -> str:
-    """Exchange ``code`` for tokens, persist them, return the account email."""
-    if not state or state not in _pending_states:
-        raise ValueError("OAuth state mismatch (login link expired or was not started here). Try again.")
-    _pending_states.pop(state, None)
-
-    flow = _flow()
-    flow.fetch_token(code=code)
-    creds = flow.credentials
-
-    email = None
+def _fetch_email(creds: Credentials) -> str | None:
     try:
         info = build("oauth2", "v2", credentials=creds, cache_discovery=False).userinfo().get().execute()
-        email = info.get("email")
-    except Exception as exc:  # noqa: BLE001 - email is cosmetic; the token still works
-        log.warning("[Google] Logged in but could not read account email: %s", exc)
+        return info.get("email")
+    except Exception as exc:  # noqa: BLE001
+        log.warning("[Google] Could not read account email: %s", exc)
+        return None
 
-    _save_token(creds, email)
-    log.info("[Google] Signed in as %s", email or "(unknown email)")
-    return email or ""
+
+def handle_callback(code: str, state: str | None) -> dict[str, Any]:
+    """Exchange ``code`` for tokens. Returns ``{"purpose", "email"}``.
+
+    For the club purpose the token is persisted; for an operator sign-in
+    nothing is stored (the email is all the caller needs).
+    """
+    entry = _pending_states.pop(state, None) if state else None
+    if entry is None:
+        raise ValueError("OAuth state mismatch (login link expired or was not started here). Try again.")
+    _, purpose, code_verifier = entry
+
+    flow = _flow(purpose)
+    if code_verifier:
+        flow.code_verifier = code_verifier
+    flow.fetch_token(code=code)
+    creds = flow.credentials
+    email = _fetch_email(creds)
+
+    if purpose == "club":
+        _save_token(creds, email)
+        log.info("[Google] Club account connected: %s", email or "(unknown email)")
+    else:
+        if not email:
+            raise ValueError("Google did not return an email address for this account.")
+        log.info("[Google] Operator sign-in: %s", email)
+    return {"purpose": purpose, "email": email or ""}
 
 
 def _save_token(creds: Credentials, email: str | None) -> None:
@@ -156,7 +196,20 @@ def auth_status() -> dict[str, Any]:
 def logout() -> None:
     if config.GOOGLE_TOKEN_FILE.is_file():
         config.GOOGLE_TOKEN_FILE.unlink()
-        log.info("[Google] Signed out (token removed)")
+        log.info("[Google] Club account disconnected (token removed)")
+
+
+def connection_status(verify: bool = False) -> dict[str, Any]:
+    """Status for the Connections panel. ``verify`` makes a real token check."""
+    status = auth_status()
+    status.update({"ok": status["logged_in"], "error": None})
+    if verify and status["logged_in"]:
+        try:
+            get_credentials()
+        except Exception as exc:  # noqa: BLE001
+            status["ok"] = False
+            status["error"] = str(exc)
+    return status
 
 
 def get_credentials() -> Credentials:

@@ -11,4 +11,4 @@ Package layout
 - ``actions``       : maps an action name ("discord", "email", ...) to its runner
 """
 
-__version__ = "2.0.0"
+__version__ = "2.1.0"

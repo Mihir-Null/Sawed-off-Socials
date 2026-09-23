@@ -57,6 +57,7 @@ export function JobPanel({ job, onClear }) {
         <div className={`flex items-center gap-3 font-extrabold ${s.cls}`}>
           <Icon size={18} className={s.spin ? 'animate-spin' : ''} />
           <span>{s.text}: {job.action}</span>
+          {job.started_by && job.started_by !== 'open-access' && <span className="text-xs text-fg2 font-normal">by {job.started_by === 'password' ? 'club password' : job.started_by}</span>}
         </div>
         {job.done && (
           <button onClick={onClear} className="text-fg2 hover:text-fg0" aria-label="Dismiss"><X size={16} /></button>
